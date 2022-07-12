@@ -1,61 +1,119 @@
+{{- range $ksts, $vsts := $.Values.statefulset }}
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: {{ include "blockchain-node.fullname" . }}
+  name: {{ $vsts.name }}
   labels:
-    {{- include "blockchain-node.labels" . | nindent 4 }}
+    {{- include "blockchain-node.labels" $ | nindent 4 }}
+    {{- with $vsts.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
-  {{- end }}
+  serviceName: {{ template "blockchain-node.fullname" $ }}-{{ $vsts.name }}
+  podManagementPolicy: {{ default "Parallel" $.Values.global.podManagementPolicy }}
+  updateStrategy:
+    type: {{ default "RollingUpdate" $.Values.global.updateStrategy.type }}
+    {{- if (eq "Recreate" $.Values.global.updateStrategy.type) }}
+    rollingUpdate: null
+    {{- end }}
   selector:
     matchLabels:
-      {{- include "blockchain-node.selectorLabels" . | nindent 6 }}
+      statefulsetname: {{ $vsts.name }}
+  replicas: {{ $vsts.replicas }}
+
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      name: {{ template "blockchain-node.fullname" $ }}
       labels:
-        {{- include "blockchain-node.selectorLabels" . | nindent 8 }}
+        {{- include "blockchain-node.labels" $ | nindent 8 }}
+        {{- with $vsts.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        statefulsetname: {{ $vsts.name }}
+      {{- with $vsts.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+      terminationGracePeriodSeconds: {{ default 180 $.Values.global.terminationGracePeriodSeconds }}
+
+      {{- with $vsts.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "blockchain-node.serviceAccountName" . }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      {{- with $.Values.global.securityContext }}
+      securityContext: {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- if $.Values.global.serviceAccount.name }}
+      serviceAccountName: {{ $.Values.global.serviceAccount.name }}
+      {{- end }}
+      initContainers:
+      {{- if $vsts.initContainers }}
+        {{- toYaml $vsts.initContainers | nindent 8 }}
+      {{- end }}
+
       containers:
-        - name: {{ .Chart.Name }}
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- range $kcntnr, $vcntnr := $vsts.containers }}
+        - name: {{ $vcntnr.name }}
+          image: "{{ $vcntnr.image.repository }}:{{ $vcntnr.image.tag }}"
+          imagePullPolicy: {{ default "IfNotPresent" $.Values.global.imagePullPolicy }}
+
+          {{- if $vcntnr.env }}
+          env: {{- toYaml $vcntnr.env | nindent 12}}
+          {{- end }}
+
+          {{- if (default false $vcntnr.command ) }}
+          workingDir: {{ default "/data" $vsts.persistence.dataMountPath }}
+          command:
+            - /bin/sh
+            - -c
+            - {{ $vcntnr.command }}
+          {{- end }}
+
+          {{- with $vcntnr.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+
           ports:
-            - name: http
-              containerPort: 80
-              protocol: TCP
-          livenessProbe:
-            httpGet:
-              path: /
-              port: http
-          readinessProbe:
-            httpGet:
-              path: /
-              port: http
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+          {{- range $kprt, $prt := $vcntnr.ports }}
+            - name:  {{ $prt.name}}
+              protocol: {{ $prt.protocol }}
+              containerPort: {{ $prt.port }}
+          {{- end }}  # {{/* range $kprt, $prt := $vcntnr.ports */}}
+
+          {{- with $vcntnr.livenessProbe }}
+          livenessProbe: {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- with $vcntnr.readinessProbe }}
+          readinessProbe: {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          volumeMounts:
+            - name: {{ $vsts.name }}-data
+              mountPath: {{ default "/data" $vsts.persistence.dataMountPath}}
+
+        {{- end }} # {{/* range $kcntnr, $vcntnr := $vsts.containers */}}
+
+      volumes:
+{{- if $vsts.persistence.existingClaims }}
+        - name: {{ $vsts.name }}-data
+          persistentVolumeClaim:
+            claimName: {{ $vsts.persistence.existingClaims }}
+{{- else }}
+  volumeClaimTemplates:
+    - metadata:
+        name: {{ $vsts.name }}-data
+      spec:
+        {{- if $vsts.persistence.storageClassName }}
+        storageClassName: {{ $vsts.persistence.storageClassName }}
+        {{- end }}
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $vsts.persistence.size | quote }}
+{{- end }} # {{/* if $vsts.persistence.existingClaims */}}
+
+{{- end }} # {{/* range $ksts, $vsts := $.Values.statefulset */}}
