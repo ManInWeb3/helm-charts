@@ -1,7 +1,7 @@
 statefulset: []
 
 global:
-  imagePullPolicy: IfNotPresent
+  # imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
