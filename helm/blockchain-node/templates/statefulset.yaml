@@ -59,16 +59,18 @@ spec:
           image: "{{ $vcntnr.image.repository }}:{{ $vcntnr.image.tag }}"
           imagePullPolicy: {{ default "IfNotPresent" $.Values.global.imagePullPolicy }}
 
-          {{- if $vcntnr.env }}
-          env: {{- toYaml $vcntnr.env | nindent 12}}
+          {{- with $vcntnr.env }}
+          env: {{- toYaml . | nindent 12}}
           {{- end }}
 
-          {{- if (default false $vcntnr.command ) }}
-          workingDir: {{ default "/data" $vsts.persistence.dataMountPath }}
+          {{- with $vcntnr.workingDir }}
+          workingDir: {{ . }}
+          {{- end }}
+          {{- with $vcntnr.command }}
           command:
             - /bin/sh
             - -c
-            - {{ $vcntnr.command }}
+            - {{ . }}
           {{- end }}
 
           {{- with $vcntnr.resources }}
@@ -80,12 +82,11 @@ spec:
             - name:  {{ $prt.name}}
               protocol: {{ $prt.protocol }}
               containerPort: {{ $prt.port }}
-          {{- end }}  # {{/* range $kprt, $prt := $vcntnr.ports */}}
+          {{- end }}
 
           {{- with $vcntnr.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- end }}
-
           {{- with $vcntnr.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- end }}

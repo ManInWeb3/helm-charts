@@ -1,15 +1,40 @@
+{{- range $kstfs, $sts := .Values.statefulset }}
+{{- range $kcntnr, $cntnr := $sts.containers }}
+{{- range $kprt, $prt := $cntnr.ports }}
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "blockchain-node.fullname" . }}
+  name: {{ include "blockchain-node.fullname" $ }}-{{ $prt.name }}
   labels:
-    {{- include "blockchain-node.labels" . | nindent 4 }}
+    {{- include "blockchain-node.labels" $ | nindent 4 }}
 spec:
-  type: {{ .Values.service.type }}
-  ports:
-    - port: {{ .Values.service.port }}
-      targetPort: http
-      protocol: TCP
-      name: http
   selector:
-    {{- include "blockchain-node.selectorLabels" . | nindent 4 }}
+    statefulsetname: {{ $sts.name }}
+  type: {{ $prt.type }}
+  ports:
+    - port: {{ $prt.port }}
+      targetPort: {{ $prt.port }}
+      protocol: {{ $prt.protocol }}
+      name: {{ $prt.name }}
+
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
