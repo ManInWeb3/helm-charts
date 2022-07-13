@@ -1,4 +1,5 @@
 {{- range $ksts, $sts := $.Values.statefulset }}
+{{- $volumeName := printf "%s-data" $sts.name }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -21,7 +22,6 @@ spec:
     matchLabels:
       statefulsetname: {{ $sts.name }}
   replicas: {{ $sts.replicas }}
-
   template:
     metadata:
       name: {{ template "blockchain-node.fullname" $ }}
@@ -36,21 +36,19 @@ spec:
       {{- end }}
     spec:
       terminationGracePeriodSeconds: {{ default 180 $.Values.global.terminationGracePeriodSeconds }}
-
       {{- with $sts.affinity }}
       affinity: {{- toYaml . | nindent 8 }}
       {{- end }}
-
       {{- with $.Values.global.securityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
-
-      {{- if $.Values.global.serviceAccount.name }}
-      serviceAccountName: {{ $.Values.global.serviceAccount.name }}
+      {{- with $.Values.global.serviceAccount.name }}
+      serviceAccountName: {{ . }}
       {{- end }}
+
+      {{- with $sts.initContainers }}
       initContainers:
-      {{- if $sts.initContainers }}
-        {{- toYaml $sts.initContainers | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
 
       containers:
@@ -92,20 +90,25 @@ spec:
           {{- end }}
 
           volumeMounts:
-            - name: {{ $sts.name }}-data
+            - name: {{ $volumeName }}
               mountPath: {{ default "/data" $sts.persistence.dataMountPath}}
 
-        {{- end }} # {{/* range $kcntnr, $cntnr := $sts.containers */}}
+        {{ end }} # {{/* range $kcntnr, $cntnr := $sts.containers */}}
 
       volumes:
-{{- if $sts.persistence.existingClaims }}
-        - name: {{ $sts.name }}-data
+  {{- if $sts.persistence.hostPath.path }}
+        - name: {{ $volumeName }}
+          hostPath:
+            path: {{ $sts.persistence.hostPath.path }}
+            type: {{ default "DirectoryOrCreate" $sts.persistence.hostPath.type }}
+  {{- else if $sts.persistence.existingClaims }}
+        - name: {{ $volumeName }}
           persistentVolumeClaim:
             claimName: {{ $sts.persistence.existingClaims }}
-{{- else }}
+  {{- else }}
   volumeClaimTemplates:
     - metadata:
-        name: {{ $sts.name }}-data
+        name: {{ $volumeName }}
       spec:
         {{- if $sts.persistence.storageClassName }}
         storageClassName: {{ $sts.persistence.storageClassName }}
@@ -115,6 +118,6 @@ spec:
         resources:
           requests:
             storage: {{ $sts.persistence.size | quote }}
-{{- end }} # {{/* if $sts.persistence.existingClaims */}}
+  {{- end }}
 
-{{- end }} # {{/* range $ksts, $sts := $.Values.statefulset */}}
+{{ end }} #--- {{/* range $ksts, $sts := $.Values.statefulset */}}
