@@ -1,16 +1,16 @@
-{{- range $ksts, $vsts := $.Values.statefulset }}
+{{- range $ksts, $sts := $.Values.statefulset }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ $vsts.name }}
+  name: {{ $sts.name }}
   labels:
     {{- include "blockchain-node.labels" $ | nindent 4 }}
-    {{- with $vsts.labels }}
+    {{- with $sts.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  serviceName: {{ template "blockchain-node.fullname" $ }}-{{ $vsts.name }}
+  serviceName: {{ template "blockchain-node.fullname" $ }}-{{ $sts.name }}
   podManagementPolicy: {{ default "Parallel" $.Values.global.podManagementPolicy }}
   updateStrategy:
     type: {{ default "RollingUpdate" $.Values.global.updateStrategy.type }}
@@ -19,25 +19,25 @@ spec:
     {{- end }}
   selector:
     matchLabels:
-      statefulsetname: {{ $vsts.name }}
-  replicas: {{ $vsts.replicas }}
+      statefulsetname: {{ $sts.name }}
+  replicas: {{ $sts.replicas }}
 
   template:
     metadata:
       name: {{ template "blockchain-node.fullname" $ }}
       labels:
         {{- include "blockchain-node.labels" $ | nindent 8 }}
-        {{- with $vsts.labels }}
+        {{- with $sts.labels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        statefulsetname: {{ $vsts.name }}
-      {{- with $vsts.podAnnotations }}
+        statefulsetname: {{ $sts.name }}
+      {{- with $sts.podAnnotations }}
       annotations: {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
       terminationGracePeriodSeconds: {{ default 180 $.Values.global.terminationGracePeriodSeconds }}
 
-      {{- with $vsts.affinity }}
+      {{- with $sts.affinity }}
       affinity: {{- toYaml . | nindent 8 }}
       {{- end }}
 
@@ -49,72 +49,72 @@ spec:
       serviceAccountName: {{ $.Values.global.serviceAccount.name }}
       {{- end }}
       initContainers:
-      {{- if $vsts.initContainers }}
-        {{- toYaml $vsts.initContainers | nindent 8 }}
+      {{- if $sts.initContainers }}
+        {{- toYaml $sts.initContainers | nindent 8 }}
       {{- end }}
 
       containers:
-        {{- range $kcntnr, $vcntnr := $vsts.containers }}
-        - name: {{ $vcntnr.name }}
-          image: "{{ $vcntnr.image.repository }}:{{ $vcntnr.image.tag }}"
+        {{- range $kcntnr, $cntnr := $sts.containers }}
+        - name: {{ $cntnr.name }}
+          image: "{{ $cntnr.image.repository }}:{{ $cntnr.image.tag }}"
           imagePullPolicy: {{ default "IfNotPresent" $.Values.global.imagePullPolicy }}
 
-          {{- with $vcntnr.env }}
+          {{- with $cntnr.env }}
           env: {{- toYaml . | nindent 12}}
           {{- end }}
 
-          {{- with $vcntnr.workingDir }}
+          {{- with $cntnr.workingDir }}
           workingDir: {{ . }}
           {{- end }}
-          {{- with $vcntnr.command }}
+          {{- with $cntnr.command }}
           command:
             - /bin/sh
             - -c
             - {{ . }}
           {{- end }}
 
-          {{- with $vcntnr.resources }}
+          {{- with $cntnr.resources }}
           resources: {{- toYaml . | nindent 12 }}
           {{- end }}
 
           ports:
-          {{- range $kprt, $prt := $vcntnr.ports }}
+          {{- range $kprt, $prt := $cntnr.ports }}
             - name:  {{ $prt.name}}
               protocol: {{ $prt.protocol }}
               containerPort: {{ $prt.port }}
           {{- end }}
 
-          {{- with $vcntnr.livenessProbe }}
+          {{- with $cntnr.livenessProbe }}
           livenessProbe: {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $vcntnr.readinessProbe }}
+          {{- with $cntnr.readinessProbe }}
           readinessProbe: {{- toYaml . | nindent 12 }}
           {{- end }}
 
           volumeMounts:
-            - name: {{ $vsts.name }}-data
-              mountPath: {{ default "/data" $vsts.persistence.dataMountPath}}
+            - name: {{ $sts.name }}-data
+              mountPath: {{ default "/data" $sts.persistence.dataMountPath}}
 
-        {{- end }} # {{/* range $kcntnr, $vcntnr := $vsts.containers */}}
+        {{- end }} # {{/* range $kcntnr, $cntnr := $sts.containers */}}
 
       volumes:
-{{- if $vsts.persistence.existingClaims }}
-        - name: {{ $vsts.name }}-data
+{{- if $sts.persistence.existingClaims }}
+        - name: {{ $sts.name }}-data
           persistentVolumeClaim:
-            claimName: {{ $vsts.persistence.existingClaims }}
+            claimName: {{ $sts.persistence.existingClaims }}
 {{- else }}
   volumeClaimTemplates:
     - metadata:
-        name: {{ $vsts.name }}-data
+        name: {{ $sts.name }}-data
       spec:
-        {{- if $vsts.persistence.storageClassName }}
-        storageClassName: {{ $vsts.persistence.storageClassName }}
+        {{- if $sts.persistence.storageClassName }}
+        storageClassName: {{ $sts.persistence.storageClassName }}
         {{- end }}
         accessModes:
           - ReadWriteOnce
         resources:
           requests:
-            storage: {{ $vsts.persistence.size | quote }}
-{{- end }} # {{/* if $vsts.persistence.existingClaims */}}
+            storage: {{ $sts.persistence.size | quote }}
+{{- end }} # {{/* if $sts.persistence.existingClaims */}}
 
-{{- end }} # {{/* range $ksts, $vsts := $.Values.statefulset */}}
+{{- end }} # {{/* range $ksts, $sts := $.Values.statefulset */}}
