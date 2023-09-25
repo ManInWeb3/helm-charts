@@ -78,8 +78,6 @@ statefulset:
         volumeMounts:
           - name: axelar-data
             mountPath: /home/axelard/.axelar
-        securityContext:
-          runAsUser: 0
     containers:
       - name: axelar-core
         image:
