@@ -1,6 +1,8 @@
 {{- range $ksts, $sts := $.Values.statefulset }}
 {{- $volumeName := printf "%s-data" $sts.name }}
 
+#! TODO: Should be moved to the STS level (it copies files to the given path, and volumes are on STS level)
+#!       The same with secrets
 {{- $stsCMNames := list }}
 {{- range $cntnr := $sts.containers }}
   {{- range $cm := $cntnr.mountConfigMaps }}
