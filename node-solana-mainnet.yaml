@@ -1,0 +1,141 @@
+statefulset:
+  - name: solana
+    replicas: 1
+    nodeSelector:
+      node.kubernetes.io/instance-type: n2d-highmem-32
+    persistence:
+      size: 1600Gi
+      storageClassName: premium-rwo
+      volumeMountPath: /data
+      gcpVolumeSnapshot: solana-mainnet-solana-latest
+    initContainers:
+      - name: increase-fd-ulimit
+        image: busybox
+        command:
+          - sh
+          - -c
+          - |
+            set -ex
+            ulimit -n 500000
+            ulimit -u 500000
+            cat >/tmp/solana.conf <<EOF
+            # Increase memory mapped files limit
+            vm.max_map_count = 500000
+            # Increase number of allowed open file descriptors
+            fs.nr_open = 500000
+            EOF
+            sysctl -p /tmp/solana.conf
+        securityContext:
+          privileged: true
+      - name: create-identity
+        image: solanalabs/solana:v1.14.16
+        command:
+          - sh
+          - -c
+          - |
+            solana-keygen new --no-bip39-passphrase -o /data/config/validator-keypair.json || true
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+          - name: solana-data
+            mountPath: /data
+    containers:
+      - name: solana
+        image:
+          repository: solanalabs/solana
+          tag: v1.14.16
+        env:
+          - name: RUST_LOG
+            value: "error"
+          - name: RUST_BACKTRACE
+            value: "full"
+        workingDir: /data
+        command:
+          - solana-validator
+          - "--ledger"
+          - "/data/ledger"
+          - "--identity"
+          - "/data/config/validator-keypair.json"
+          - "--trusted-validator"
+          - "7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2"
+          - "--trusted-validator"
+          - "GdnSyH3YtwcxFvQrVVJMm1JhTS4QVX7MFsX56uJLUfiZ"
+          - "--trusted-validator"
+          - "DE1bawNcRJB9rVm3buyMVfr8mBEoyyu73NBovf2oXJsJ"
+          - "--trusted-validator"
+          - "CakcnaRDHka2gXyfbEd2d3xsvkJkqsLw2akB3zsN1D2S"
+          - "--expected-genesis-hash"
+          - "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
+          - "--entrypoint"
+          - "entrypoint.mainnet-beta.solana.com:8001"
+          - "--entrypoint"
+          - "entrypoint2.mainnet-beta.solana.com:8001"
+          - "--entrypoint"
+          - "entrypoint3.mainnet-beta.solana.com:8001"
+          - "--entrypoint"
+          - "entrypoint4.mainnet-beta.solana.com:8001"
+          - "--no-voting"
+          - "--no-port-check"
+          - "--rpc-port"
+          - "8545"
+          - "--rpc-bind-address"
+          - "0.0.0.0"
+          - "--enable-rpc-transaction-history"
+          - "--full-rpc-api"
+          - "--wal-recovery-mode"
+          - "skip_any_corrupted_record"
+          - "--no-os-network-limits-test"
+          - "--no-os-network-stats-reporting"
+          - "--init-complete-file"
+          - "/data/init-completed"
+          - "--limit-ledger-size"
+          - "--no-snapshot-fetch"
+          - "--maximum-full-snapshots-to-retain"
+          - "1"
+          - "--maximum-incremental-snapshots-to-retain"
+          - "1"
+          - "--incremental-snapshot-interval-slots"
+          - "0"
+          - "--no-incremental-snapshots"
+          - "--accounts"
+          - "/data/accounts"
+          - "--log"
+          - "-"
+
+        ports:
+          - name: rpc
+            type: ClusterIP
+            port: 8545
+            protocol: TCP
+        resources:
+          requests:
+            cpu: 25
+        healthProbes:
+          portToMonitor: 8545
+          env:
+            EVM_BLOCK_NUMBER_METHOD_NAME: "getBlockHeight"
+            SIDECAR_CHAIN_ID: "0006"
+            HEIGHT_CHECK_STRATEGY: evm
+            REMOTE_RPC_ENDPOINTS: "https://api.mainnet-beta.solana.com"
+            STARTUP_PROBE_STRATEGY: alwaysHealthy
+            LOG_LEVEL: "debug"
+            READINESS_PROBE_STRATEGY: localVsRemote
+            LIVENESS_PROBE_STRATEGY: localRpcAvailable
+        startupProbe:
+          tcpSocket:
+            port: 8545
+          periodSeconds: 60
+          failureThreshold: 60
+        livenessProbe:
+          tcpSocket:
+            port: 8545
+
+global:
+  fullnameOverride: solana-mainnet
+  serviceAccount:
+    name: solana
+  securityContext:
+    fsGroup: 0
+    runAsUser: 0
+    runAsGroup: 0
+    fsGroupChangePolicy: "Always"

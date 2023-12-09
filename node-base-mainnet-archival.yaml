@@ -1,0 +1,318 @@
+statefulset:
+  - name: base
+    replicas: 2
+    persistence:
+      size: 350Gi
+      storageClassName: standard-rwo
+      volumeMountPath: /data
+      gcpVolumeSnapshot: base-mainnet-archival
+
+    initContainers:
+      - name: download-extarct-snapshot
+        image: alpine:latest
+        workingDir: /data
+        env:
+          - name: SNAPSHOT_URL
+            value: "https://base-public-snapshots-mainnet.s3.us-east-1.amazonaws.com/base-mainnet-1690837782.tar.gz"
+          - name: APP_HOME
+            value: /data
+        command:
+          - 'sh'
+          - '-c'
+          - |
+            set -ex
+
+            if [ ! -f "$APP_HOME/downloaded" ]; then
+              apk add aria2
+              echo "downloading snapshot from ${SNAPSHOT_URL}"
+              mkdir -p ${APP_HOME}/data
+              cd ${APP_HOME}/data
+              aria2c "${SNAPSHOT_URL}" -d ${APP_HOME}/data --continue=true
+              touch "$APP_HOME/downloaded"
+            fi
+            if [ ! -f "$APP_HOME/extracted" ]; then
+              apk add curl tar zstd
+              cd ${APP_HOME}/data
+
+              tar -xzvf $(basename $SNAPSHOT_URL)
+              chown -Rf 1001:1001 $APP_HOME
+              touch "$APP_HOME/extracted"
+            fi
+            sleep 300
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 2
+            memory: 12Gi
+        volumeMounts:
+          - name: base-data
+            mountPath: /data
+
+      - name: download-genesis
+        image: "alpine:latest"
+        env:
+          - name: FILE
+            value: "/data/genesis-l2.json"
+          - name: URL
+            value: https://github.com/base-org/node/raw/{{ .rootValues.baseRelease }}/mainnet/genesis-l2.json
+          - name: DATA
+            value: "/data"
+        command:
+          - 'sh'
+          - '-c'
+          - |
+            test -f "${DATA}/version" || touch ${DATA}/version
+            if [ "{{ .rootValues.baseRelease }}" != "$(cat ${DATA}/version)" ]; then
+              echo "Genesis not exist, downloading it."
+              mkdir -p $(dirname $FILE)
+              rm $FILE
+              wget $URL -O $FILE
+            fi
+        volumeMounts:
+          - name: base-data
+            mountPath: /data
+
+      - name: download-config
+        image: "alpine:latest"
+        env:
+          - name: FILE
+            value: "/data/rollup.json"
+          - name: URL
+            value: https://github.com/base-org/node/raw/{{ .rootValues.baseRelease }}/mainnet/rollup.json
+          - name: DATA
+            value: "/data"
+        command:
+          - 'sh'
+          - '-c'
+          - |
+            test -f "${DATA}/version" || touch ${DATA}/version
+            if [ "{{ .rootValues.baseRelease }}" != "$(cat ${DATA}/version)" ]; then
+              echo "Config not exist, downloading it."
+              mkdir -p $(dirname $FILE)
+              rm $FILE
+              wget $URL -O $FILE
+            fi
+        volumeMounts:
+          - name: base-data
+            mountPath: /data
+
+      - name: initialize-geth
+        image: "alpine:latest"
+        env:
+          - name: GETH_DATA_DIR
+            value: /data
+          - name: GETH_CHAINDATA_DIR
+            value: $GETH_DATA_DIR/geth/chaindata
+          - name: OP_GETH_GENESIS_FILE_PATH # included with the docker image
+            value: "/data/genesis-l2.json"
+        command:
+          - 'sh'
+          - '-c'
+          - |
+              if [ ! -d /data/geth/chaindata ]; then
+                echo "/data/geth/chaindata missing, running init"
+                echo "Initializing genesis."
+                geth --verbosity="3" init \
+                  --datadir=$GETH_DATA_DIR \
+                  $OP_GETH_GENESIS_FILE_PATH
+              else
+                echo "/data/geth/chaindata exists."
+              fi
+              PUBLIC_IP=$(curl -s v4.ident.me)
+              export OP_NODE_P2P_ADVERTISE_IP=$PUBLIC_IP
+        volumeMounts:
+          - name: base-data
+            mountPath: /data
+
+    containers:
+      - name: opgeth
+        image:
+          repository: pocketfoundation/optimism-geth
+          tag: v1.101200.1-rc.2
+        workingDir: /data
+        args:
+          - --datadir=/data
+          - --networkid=8453
+          - --verbosity=3
+          - --http
+          - --http.corsdomain=*
+          - --http.addr=0.0.0.0
+          - --http.vhosts=*
+          - --http.port=8545
+          - --http.api=web3,debug,eth,txpool,net,engine
+          - --authrpc.addr=0.0.0.0
+          - --authrpc.port=8551
+          - --authrpc.vhosts=*
+          - --authrpc.jwtsecret=/data/engine-auth-jwt
+          - --ws
+          - --ws.addr=0.0.0.0
+          - --ws.port=8546
+          - --ws.origins=*
+          - --ws.api=debug,eth,txpool,net,engine
+          - --metrics
+          - --metrics.addr=0.0.0.0
+          - --metrics.port=6060
+          - --syncmode=full
+          - --gcmode=archive
+          - --nodiscover
+          - --maxpeers=100
+          - --nat=extip:0.0.0.0
+          - --rollup.sequencerhttp=https://mainnet-sequencer.base.org
+        ports:
+          - name: rpc
+            type: ClusterIP
+            port: 8545
+            protocol: TCP
+          - name: geth-websocket
+            type: ClusterIP
+            port: 8546
+            protocol: TCP
+          - name: geth-authrpc
+            type: ClusterIP
+            port: 8551
+            protocol: TCP
+          - name: geth-p2p
+            type: ClusterIP
+            port: 30303
+            protocol: TCP
+          - name: geth-p2pudp
+            type: ClusterIP
+            port: 30303
+            protocol: UDP
+          - name: geth-metrics
+            type: ClusterIP
+            port: 6060
+            protocol: TCP
+        resources:
+          limits:
+            cpu: 4
+            memory: 32Gi
+          requests:
+            cpu: 2
+            memory: 16Gi
+        healthProbes:
+          portToMonitor: 8545
+          env:
+            SIDECAR_CHAIN_ID: "0079"
+            HEIGHT_CHECK_STRATEGY: evm
+            REMOTE_RPC_ENDPOINTS: "https://mainnet.base.org"
+            LOG_LEVEL: "debug"
+            LIVENESS_PROBE_STRATEGY: alwaysHealthy
+            STARTUP_PROBE_STRATEGY: alwaysHealthy
+            READINESS_PROBE_STRATEGY: localVsRemote
+        startupProbe:
+          tcpSocket:
+            port: 8545
+          periodSeconds: 60
+          failureThreshold: 120
+        livenessProbe:
+          tcpSocket:
+            port: 8545
+
+      - name: opnode
+        image:
+          repository: pocketfoundation/optimism-node
+          tag: v1.1.1
+        workingDir: /data
+        # command:
+        #   - op-node
+        env:
+          - name: OP_NODE_L1_ETH_RPC
+            value: https://eth-mainnet.gateway.pokt.network/v1/lb/ddcbe428
+          - name: OP_NODE_L2_ENGINE_AUTH
+            value: /data/engine-auth-jwt
+          - name: OP_NODE_L2_ENGINE_RPC
+            value: http://localhost:8551
+          - name: OP_NODE_LOG_LEVEL
+            value: info
+          - name: OP_NODE_METRICS_ADDR
+            value: "0.0.0.0"
+          - name: OP_NODE_METRICS_ENABLED
+            value: "true"
+          - name: OP_NODE_METRICS_PORT
+            value: "7300"
+          - name: OP_NODE_P2P_AGENT
+            value: base
+          - name: OP_NODE_P2P_BOOTNODES
+            value: enr:-J24QNz9lbrKbN4iSmmjtnr7SjUMk4zB7f1krHZcTZx-JRKZd0kA2gjufUROD6T3sOWDVDnFJRvqBBo62zuF-hYCohOGAYiOoEyEgmlkgnY0gmlwhAPniryHb3BzdGFja4OFQgCJc2VjcDI1NmsxoQKNVFlCxh_B-716tTs-h1vMzZkSs1FTu_OYTNjgufplG4N0Y3CCJAaDdWRwgiQG,enr:-J24QH-f1wt99sfpHy4c0QJM-NfmsIfmlLAMMcgZCUEgKG_BBYFc6FwYgaMJMQN5dsRBJApIok0jFn-9CS842lGpLmqGAYiOoDRAgmlkgnY0gmlwhLhIgb2Hb3BzdGFja4OFQgCJc2VjcDI1NmsxoQJ9FTIv8B9myn1MWaC_2lJ-sMoeCDkusCsk4BYHjjCq04N0Y3CCJAaDdWRwgiQG,enr:-J24QDXyyxvQYsd0yfsN0cRr1lZ1N11zGTplMNlW4xNEc7LkPXh0NAJ9iSOVdRO95GPYAIc6xmyoCCG6_0JxdL3a0zaGAYiOoAjFgmlkgnY0gmlwhAPckbGHb3BzdGFja4OFQgCJc2VjcDI1NmsxoQJwoS7tzwxqXSyFL7g0JM-KWVbgvjfB8JA__T7yY_cYboN0Y3CCJAaDdWRwgiQG,enr:-J24QHmGyBwUZXIcsGYMaUqGGSl4CFdx9Tozu-vQCn5bHIQbR7On7dZbU61vYvfrJr30t0iahSqhc64J46MnUO2JvQaGAYiOoCKKgmlkgnY0gmlwhAPnCzSHb3BzdGFja4OFQgCJc2VjcDI1NmsxoQINc4fSijfbNIiGhcgvwjsjxVFJHUstK9L1T8OTKUjgloN0Y3CCJAaDdWRwgiQG,enr:-J24QG3ypT4xSu0gjb5PABCmVxZqBjVw9ca7pvsI8jl4KATYAnxBmfkaIuEqy9sKvDHKuNCsy57WwK9wTt2aQgcaDDyGAYiOoGAXgmlkgnY0gmlwhDbGmZaHb3BzdGFja4OFQgCJc2VjcDI1NmsxoQIeAK_--tcLEiu7HvoUlbV52MspE0uCocsx1f_rYvRenIN0Y3CCJAaDdWRwgiQG
+          - name: OP_NODE_P2P_LISTEN_IP
+            value: "0.0.0.0"
+          - name: OP_NODE_P2P_LISTEN_TCP_PORT
+            value: "9222"
+          - name: OP_NODE_P2P_LISTEN_UDP_PORT
+            value: "9222"
+          - name: OP_NODE_ROLLUP_CONFIG
+            value: /data/rollup.json
+          - name: OP_NODE_RPC_ADDR
+            value: "0.0.0.0"
+          - name: OP_NODE_RPC_PORT
+            value: "7545"
+          - name: OP_NODE_SNAPSHOT_LOG
+            value: /tmp/op-node-snapshot-log
+          - name: OP_NODE_VERIFIER_L1_CONFS
+            value: "4"
+          - name: OP_NODE_L1_TRUST_RPC
+            value: "true"
+        ports:
+          - name: base-rpc
+            type: ClusterIP
+            port: 8545
+            protocol: TCP
+          - name: base-p2p
+            type: ClusterIP
+            port: 30303
+            protocol: TCP
+          - name: base-p2pudp
+            type: ClusterIP
+            port: 30303
+            protocol: UDP
+          - name: base-metrics
+            type: ClusterIP
+            port: 7300
+            protocol: TCP
+          - name: base-pprof
+            type: ClusterIP
+            port: 6060
+            protocol: TCP
+        resources:
+          limits:
+            cpu: 1
+            memory: 4Gi
+          requests:
+            cpu: 500m
+            memory: 2Gi
+        startupProbe:
+          tcpSocket:
+            port: 8545
+          periodSeconds: 60
+          failureThreshold: 120
+        livenessProbe:
+          tcpSocket:
+            port: 8545
+        readinessProbe:
+          exec:
+            command:
+            - 'sh'
+            - '-c'
+            - |
+                until [ "$(curl -s -w '%{http_code}' -o /dev/null $OP_NODE_L2_ENGINE_RPC)" -eq 401 ]; do
+                  echo "waiting for geth to be ready"
+                  echo $OP_NODE_L2_ENGINE_RPC
+                  echo "$(curl -s -w '%{http_code}' -o /dev/null $OP_NODE_L2_ENGINE_RPC)"
+                  sleep 5
+                done
+          periodSeconds: 30
+          failureThreshold: 1
+          successThreshold: 1
+          timeoutSeconds: 1
+
+global:
+  fullnameOverride: base-mainnet-archival
+  serviceAccount:
+    name: base-mainnet-archival
+  securityContext:
+    fsGroup: 1001
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroupChangePolicy: "Always"

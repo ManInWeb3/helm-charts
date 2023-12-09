@@ -1,0 +1,246 @@
+statefulset:
+  - name: heimdall
+    replicas: 2
+    nodeSelector:
+      node.kubernetes.io/instance-type: n2-standard-16
+    persistence:
+      size: 700Gi
+      storageClassName: standard-rwo
+      volumeMountPath: /data
+      gcpVolumeSnapshot: polygon-mainnet-heimdall
+    initContainers:
+      - name: download-snapshot
+        image: ubuntu:latest
+        workingDir: /data
+        env:
+          - name: network
+            value: "mainnet"
+          - name: client
+            value: "heimdall"
+        command:
+          - 'bash'
+          - '-c'
+          - |
+            set -ex
+
+            extract_dir="${client}_extract"
+
+            apt-get update
+            apt-get install -y zstd pv aria2
+            mkdir -p "$extract_dir"
+            cd "$extract_dir"
+
+            # download compiled incremental snapshot files list
+            aria2c -x6 -s6 "https://snapshot-download.polygon.technology/$client-$network-incremental-compiled-files.txt"
+
+            # download all incremental files, includes automatic checksum verification per increment
+            aria2c -x6 -s6 -c --auto-file-renaming=false --max-tries=100 -i $client-$network-incremental-compiled-files.txt
+
+            # Don't extract if download failed
+            if [ $? -ne 0 ]; then
+                echo "Download failed. Restart the script to resume downloading."
+                exit 1
+            fi
+
+            # helper method to extract all files and delete already-extracted download data to minimize disk use
+            function extract_files() {
+                compiled_files=$1
+                while read -r line; do
+                    if [[ "$line" == checksum* ]]; then
+                        continue
+                    fi
+                    filename=`echo $line | awk -F/ '{print $NF}'`
+                    if echo "$filename" | grep -q "bulk"; then
+                        pv $filename | tar -I zstd -xf - -C . && rm $filename
+                    else
+                        pv $filename | tar -I zstd -xf - -C . --strip-components=3 && rm $filename
+                    fi
+                done < $compiled_files
+            }
+
+            # execute final data extraction step
+            extract_files $client-$network-incremental-compiled-files.txt
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 2
+            memory: 8Gi
+        volumeMounts:
+          - name: heimdall-data
+            mountPath: /data
+
+      - name: init-configs
+        image: 0xpolygon/heimdall:0.3.4
+        env:
+          - name: GENESIS_FILE
+            value: "/data/config/genesis.json"
+          - name: GENESIS_URL
+            value: https://raw.githubusercontent.com/maticnetwork/heimdall/master/builder/files/genesis-mainnet-v1.json
+        command:
+          - 'sh'
+          - '-c'
+          - |
+            # rm -rf /data/config
+            if [ ! -d /data/config ]; then
+              echo "Initialising heimdall configs"
+              heimdalld --home=/data init
+              rm -f /data/config/genesis.json
+              wget $GENESIS_URL -O $GENESIS_FILE
+            fi
+
+        volumeMounts:
+          - name: heimdall-data
+            mountPath: /data
+    containers:
+      - name: heimdalld
+        image:
+          repository: 0xpolygon/heimdall
+          tag: 0.3.4
+        resources:
+          limits:
+            memory: 2Gi
+            cpu: 1
+          requests:
+            memory: 512Mi
+            cpu: 256m
+        command:
+          - heimdalld
+          - --home=/data
+          - --chain=mainnet
+          - start
+          - --seeds=f4f605d60b8ffaaf15240564e58a81103510631c@159.203.9.164:26656,4fb1bc820088764a564d4f66bba1963d47d82329@44.232.55.71:26656,2eadba4be3ce47ac8db0a3538cb923b57b41c927@35.199.4.13:26656,3b23b20017a6f348d329c102ddc0088f0a10a444@35.221.13.28:26656,25f5f65a09c56e9f1d2d90618aa70cd358aa68da@35.230.116.151:26656
+          - --rest-server
+          - --laddr=tcp://0.0.0.0:1317
+          - --rpc.laddr=tcp://0.0.0.0:26657
+        ports:
+          - name: heimdall-rpc
+            type: ClusterIP
+            port: 26657
+            protocol: TCP
+          - name: heimdall-rest
+            type: ClusterIP
+            port: 1317
+            protocol: TCP
+        startupProbe:
+          tcpSocket:
+            port: 1317
+          periodSeconds: 60
+          failureThreshold: 10
+        livenessProbe:
+          tcpSocket:
+            port: 1317
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - |
+              wget -qO- http://localhost:26657/status|grep '"catching_up": false'
+          periodSeconds: 30
+          failureThreshold: 1
+          successThreshold: 1
+          timeoutSeconds: 1
+
+  - name: bor
+    replicas: 1
+    persistence:
+      size: 8000Gi
+      storageClassName: premium-rwo
+      volumeMountPath: /data
+      gcpVolumeSnapshot: polygon-mainnet-bor
+    initContainers:
+      - name: wait-heimdall-synced
+        image: alpine:latest
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -ex
+            apk add curl jq
+            while :; do
+              CATCHINGUP=$(curl http://polygon-mainnet-heimdall-rpc:26657/status | \
+                  jq -r '.result.sync_info.catching_up')
+              echo "CatchingUp: $CATCHINGUP"
+              if [ "$CATCHINGUP" == "false" ]; then
+                echo "HEIMDALL is up and synched, running BOR."
+                break
+              fi
+              sleep 60
+            done
+        securityContext:
+          runAsUser: 0
+        resources:
+          limits:
+            # cpu: 200m
+            memory: 600Mi
+          requests:
+            cpu: 200m
+            memory: 400Mi
+    containers:
+      - name: bor
+        image:
+          repository: 0xpolygon/bor
+          tag: "0.4.0"
+        resources:
+          limits:
+            memory: 80Gi
+            # cpu: 8
+          requests:
+            memory: 60Gi
+            cpu: 3
+        command:
+          - bor
+          - server
+          - --chain=mainnet
+          - --datadir=/data
+          - --ipcdisable
+          - --bootnodes=enode://0cb82b395094ee4a2915e9714894627de9ed8498fb881cec6db7c65e8b9a5bd7f2f25cc84e71e89d0947e51c76e85d0847de848c7782b13c0255247a6758178c@44.232.55.71:30303,enode://88116f4295f5a31538ae409e4d44ad40d22e44ee9342869e7d68bdec55b0f83c1530355ce8b41fbec0928a7d75a5745d528450d30aec92066ab6ba1ee351d710@159.203.9.164:30303,enode://4be7248c3a12c5f95d4ef5fff37f7c44ad1072fdb59701b2e5987c5f3846ef448ce7eabc941c5575b13db0fb016552c1fa5cca0dda1a8008cf6d63874c0f3eb7@3.93.224.197:30303,enode://32dd20eaf75513cf84ffc9940972ab17a62e88ea753b0780ea5eca9f40f9254064dacb99508337043d944c2a41b561a17deaad45c53ea0be02663e55e6a302b2@3.212.183.151:30303
+          - --bor.heimdall=http://polygon-mainnet-heimdall-rest:1317
+          - --maxpeers=200
+          - --cache=8000
+          - --snapshot=false
+          - --txlookuplimit=0
+          - --txpool.nolocals
+          - --txpool.pricelimit=30000000000
+          - --txpool.accountslots=16
+          - --txpool.globalslots=32768
+          - --txpool.accountqueue=16
+          - --txpool.globalqueue=32768
+          - --txpool.lifetime=1h30m0s
+          - --http
+          - --http.port=8545
+          - --http.addr=0.0.0.0
+          - --http.vhosts=*
+          - --http.corsdomain=*
+          - --http.api=eth,net,web3,txpool,bor
+
+        ports:
+          - name: rpc
+            type: ClusterIP
+            port: 8545
+            protocol: TCP
+        healthProbes:
+          portToMonitor: 8545
+          env:
+            SIDECAR_CHAIN_ID: "0009"
+            HEIGHT_CHECK_STRATEGY: evm
+            REMOTE_RPC_ENDPOINTS: "https://rpc.ankr.com/polygon,https://polygon-rpc.com,https://rpc-mainnet.matic.quiknode.pro"
+            READINESS_PROBE_STRATEGY: localVsRemote
+        startupProbe:
+          tcpSocket:
+            port: 8545
+          periodSeconds: 60
+          failureThreshold: 120
+        livenessProbe:
+          tcpSocket:
+            port: 8545
+global:
+  fullnameOverride: polygon-mainnet
+  serviceAccount:
+    name: polygon
+  securityContext:
+    fsGroup: 1001
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroupChangePolicy: "OnRootMismatch"

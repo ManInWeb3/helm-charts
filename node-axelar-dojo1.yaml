@@ -1,13 +1,57 @@
 statefulset:
-  #! Requires an Axelar node
-  - name: vald
+  - name: axelar
     replicas: 1
     persistence:
       size: 10Gi
       storageClassName: local-path
       volumeMountPath: /home/axelard/.axelar
     initContainers:
-      #? Do we need to sync the data for validator ????
+      - name: restore-data-from-snapshot
+        image: debian:latest
+        env:
+          - name: APP_HOME
+            value: "/home/axelard/.axelar"
+        workingDir: /home/axelard/.axelar/data
+        command:
+          - /bin/sh
+          - -c
+          - |
+            #* From https://quicksync.io/networks/axelar.html
+            apt-get update -y
+            apt-get install wget liblz4-tool aria2 -y
+            if [ ! -f "$APP_HOME/downloaded" ]; then
+              # change network to default/pruned/archive depending on your needs
+              URL=`curl -L https://quicksync.io/axelar.json|jq -r '.[] |select(.file=="axelar-dojo-1-pruned")|.url'`
+              aria2c -x5 $URL
+              # OR (single thread but no double space needed on harddisk and no option for checksum)
+              # wget -O - $URL | lz4 -d | tar -xvf -
+              wget https://raw.githubusercontent.com/chainlayer/quicksync-playbooks/master/roles/quicksync/files/checksum.sh
+              wget $URL.checksum
+              # Compare checksum with onchain version. Hash can be found at $URL.hash
+              curl -s https://lcd-cosmos.cosmostation.io/txs/`curl -s $URL.hash`|jq -r '.tx.value.memo'|sha512sum -c
+              ./checksum.sh `basename $URL`
+              date > $APP_HOME/downloaded
+            fi
+            if [ ! -f "$APP_HOME/extracted" ]; then
+              lz4 -d `basename $URL` | tar xf -
+              date > $APP_HOME/extracted
+              #* Set permissions
+              chown -R 1000:1001 /data
+            fi
+            # sleep 10000000
+        volumeMounts:
+          - name: axelar-data
+            mountPath: /home/axelard/.axelar
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 1
+            memory: 2Gi
+          limits:
+            cpu: 2
+            memory: 2Gi
+
       - name: download-genesis
         image: alpine:latest
         env:
@@ -27,46 +71,30 @@ statefulset:
             else
                 echo "genesis file already exists"
             fi
+
         volumeMounts:
-          - name: vald-data
+          - name: axelar-data
             mountPath: /home/axelard/.axelar
     containers:
-      - name: vald
+      - name: axelar-core
         image:
           repository: axelarnet/axelar-core
           tag: v0.13.6  #v0.34.1
-        # env:
-        ##! Validator
-        #   - name: KEYRING_PASSWORD
-        #     valueFrom:
-        #       secretKeyRef:
-        #         name: keyring-password
-        #         key: KEYRING_PASSWORD
-        #         optional: false
         workingDir: /home/axelard/.axelar
         command:
-          - sleep
-          - infinity
-        #   - axelard
-
-        # args:
-        #   - vald-start
-        #   - --validator-addr=axelarvaloper156drexpensj6scjekfjh2v97snsgjtpe70vxs6
-        #   - --node=tcp://localhost:26657 #* DEFAULT value
-        #   - --tofnd-host=localhost       #* DEFAULT value
-        #   - --tofnd-port=50051           #* DEFAULT value
-        #   - --chain-id=axelar-testnet-lisbon-3
-        #   #* From https://github.com/axelarnetwork/axelarate-community/blob/main/resources/mainnet/seeds.txt
-        #   - --p2p.seeds=a005b8923888007eb5cf9ed8c8120ed956bc31f7@k8s-testnet-axelarco-c0dd71f944-b4c8da2f814e7b8f.elb.us-east-2.amazonaws.com:26656
-        #   - --log_level=debug
-
-        # resources:
-        #   limits:
-        #     cpu: 3
-        #     memory: 15Gi
-        #   requests:
-        #     cpu: 2
-        #     memory: 10Gi
+          - axelard
+        args:
+          - start
+          - --pruning=everything
+          #* From https://github.com/axelarnetwork/axelarate-community/blob/main/resources/mainnet/seeds.txt
+          - --p2p.seeds=a005b8923888007eb5cf9ed8c8120ed956bc31f7@k8s-testnet-axelarco-c0dd71f944-b4c8da2f814e7b8f.elb.us-east-2.amazonaws.com:26656
+        resources:
+          limits:
+            cpu: 3
+            memory: 15Gi
+          requests:
+            cpu: 2
+            memory: 10Gi
         mountConfigMaps:
           - name: config-dir
             targetPath: /home/axelard/.axelar/config
@@ -83,7 +111,7 @@ statefulset:
             type: ClusterIP
             port: 1317
             protocol: TCP
-          - name: vald-grpc
+          - name: grpc
             type: ClusterIP
             port: 9090
             protocol: TCP
@@ -91,25 +119,25 @@ statefulset:
             type: ClusterIP
             port: 26657
             protocol: TCP
-            # service:
-            #   type: ClusterIP
-            #   annotations:
-            #     cloud.google.com/neg: '{"ingress": true}'
-            # ingress:
-            #   enabled: false
-            #   className: "Nginx"
-            #   annotations:
-            #     kubernetes.io/ingress.class: nginx
-            #     kubernetes.io/tls-acme: "true"
-            #   hosts:
-            #     - host: chart-example.local
-            #       paths:
-            #         - path: /
-            #           pathType: ImplementationSpecific
-            #   tls:
-            #    - secretName: chart-example-tls
-            #      hosts:
-            #        - chart-example.local
+            service:
+              type: ClusterIP
+              annotations:
+                cloud.google.com/neg: '{"ingress": true}'
+            ingress:
+              enabled: false
+              className: "Nginx"
+              annotations:
+                kubernetes.io/ingress.class: nginx
+                kubernetes.io/tls-acme: "true"
+              hosts:
+                - host: chart-example.local
+                  paths:
+                    - path: /
+                      pathType: ImplementationSpecific
+              tls:
+               - secretName: chart-example-tls
+                 hosts:
+                   - chart-example.local
           - name: metrics
             type: ClusterIP
             port: 26660
@@ -126,85 +154,38 @@ statefulset:
           timeoutSeconds: 1
           successThreshold: 1
           failureThreshold: 3
-        # readinessProbe:
-        #   exec:
-        #     command:
-        #     - sh
-        #     - -c
-        #     - |
-        #       if [ "$(wget -qO- http://localhost:26657/status | $JQ -r '.result.sync_info.catching_up')" == "false" ]; then
-        #         exit 0
-        #       else
-        #         exit 1;
-        #       fi
-        #   periodSeconds: 30
-        #   failureThreshold: 1
-        #   successThreshold: 1
-        #   timeoutSeconds: 1
-
-      - name: tofnd
-        image:
-          repository: axelarnet/tofnd
-          tag: v0.10.2
-        env:
-          - name: PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: tofnd-password
-                key: PASSWORD
-                optional: false
-          - name: MNEMONIC #! need to be a file $HOME/import
-            valueFrom:
-              secretKeyRef:
-                name: tofnd-password
-                key: MNEMONIC
-                optional: false
-          - name: TOFND_HOME
-            value: "/home/axelard/.axelar/tofnd"
-          - name: MNEMONIC_CMD
-            value: "auto"
-        #* Run default entrypoint
-        # command:
-        #   - sleep
-        #   - infinity
-        # resources:
-        #   limits:
-        #     cpu: 3
-        #     memory: 15Gi
-        #   requests:
-        #     cpu: 2
-        #     memory: 10Gi
-        ports:
-          - name: grpc
-            type: ClusterIP
-            port: 50051
-            protocol: TCP
-        startupProbe:
-          tcpSocket:
-            port: 50051
-          periodSeconds: 60
-          failureThreshold: 20 #* Max 20 min to startup
-        livenessProbe:
-          tcpSocket:
-            port: 50051
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - |
+              if [ "$(wget -qO- http://localhost:26657/status | $JQ -r '.result.sync_info.catching_up')" == "false" ]; then
+                exit 0
+              else
+                exit 1;
+              fi
+          periodSeconds: 30
+          failureThreshold: 1
+          successThreshold: 1
+          timeoutSeconds: 1
 
 # Additional manifests to deploy as an array
 additionalManifests:
-  #! Pod monitor to scrape the metrics
-  # - apiVersion: monitoring.coreos.com/v1
-  #   kind: PodMonitor
-  #   metadata:
-  #     name: axelar-metrics
-  #   spec:
-  #     selector:
-  #       matchLabels:
-  #         statefulsetname: axelar
-  #     namespaceSelector:
-  #       matchNames:
-  #         - axelar
-  #     podMetricsEndpoints:
-  #     - path: /metrics
-  #       port: metrics
+  - apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      name: axelar-metrics
+    spec:
+      selector:
+        matchLabels:
+          statefulsetname: axelar
+      namespaceSelector:
+        matchNames:
+          - axelar
+      podMetricsEndpoints:
+      - path: /metrics
+        port: metrics
   - kind: ConfigMap
     apiVersion: v1
     metadata:
@@ -858,8 +839,6 @@ additionalManifests:
 
         # snapshot-keep-recent specifies the number of recent snapshots to keep and serve (0 to keep all).
         snapshot-keep-recent = 2
-
-
 
 global:
   serviceAccount:
