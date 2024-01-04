@@ -1,0 +1,19 @@
+apiVersion: v1
+entries:
+  blockchain-node:
+  - apiVersion: v2
+    created: "2024-01-04T00:14:25.45291785Z"
+    description: A Helm chart for Kubernetes
+    digest: ba622da900284e26d07844679e59fa6e627840d2f703d6059e06935582f488ac
+    keywords:
+    - blockchain
+    - web3
+    maintainers:
+    - email: vlad
+      name: vlad
+    name: blockchain-node
+    type: application
+    urls:
+    - https://github.com/ManInWeb3/helm-charts/releases/download/blockchain-node-0.1.0/blockchain-node-0.1.0.tgz
+    version: 0.1.0
+generated: "2024-01-04T00:14:25.452930453Z"
