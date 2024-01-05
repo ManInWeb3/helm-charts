@@ -28,7 +28,7 @@ metadata:
       {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  serviceName: {{ template "blockchain-node.fullname" $ }}-{{ $sts.name }}
+  serviceName: {{ $sts.name }}
   podManagementPolicy: {{ default "Parallel" $.Values.global.podManagementPolicy }}
   updateStrategy:
     type: {{ default "RollingUpdate" $.Values.global.updateStrategy }}
@@ -53,7 +53,6 @@ spec:
       {{- end }}
     spec:
       setHostnameAsFQDN: true
-      subdomain: {{ $sts.name }}
       terminationGracePeriodSeconds: {{ default 30 $.Values.global.terminationGracePeriodSeconds }}
       {{- with $sts.affinity }}
       affinity: {{- toYaml . | nindent 8 }}
