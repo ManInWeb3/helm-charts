@@ -23,7 +23,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $sts.name }}-headless
+  name: {{ $sts.name }}
   labels:
     {{- include "blockchain-node.labels" $ | nindent 4 }}
   ports:
