@@ -27,7 +27,8 @@ metadata:
   labels:
     {{- include "blockchain-node.labels" $ | nindent 4 }}
   ports:
-  - port: 12345
+    - port: 12345
+      name: port
   clusterIP: None
   selector:
     statefulsetname: {{ $sts.name }}
