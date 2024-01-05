@@ -17,7 +17,18 @@ spec:
       targetPort: {{ $prt.port }}
       protocol: {{ $prt.protocol }}
       name: {{ $prt.name }}
-
 {{- end -}}
-{{- end -}}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $sts.name }}-headless
+  labels:
+    {{- include "blockchain-node.labels" $ | nindent 4 }}
+  ports:
+  - port: 12345
+  clusterIP: None
+  selector:
+    statefulsetname: {{ $sts.name }}
 {{- end -}}
