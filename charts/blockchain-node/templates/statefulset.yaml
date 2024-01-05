@@ -52,6 +52,7 @@ spec:
       annotations: {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      setHostnameAsFQDN: true
       terminationGracePeriodSeconds: {{ default 30 $.Values.global.terminationGracePeriodSeconds }}
       {{- with $sts.affinity }}
       affinity: {{- toYaml . | nindent 8 }}

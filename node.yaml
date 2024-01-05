@@ -1,0 +1,59 @@
+statefulset:
+  - name: appchain
+    replicas: 1
+    persistence:
+      size: 200Gi
+      storageClassName: gp2
+      volumeMountPath: /data
+    containers:
+      - name: appchain
+        image:
+          repository: 111/222
+          tag: sdfgsdgfsd
+        workingDir: /data
+        command:
+          - sleep
+          - infinity
+          # - minid
+          # - start
+        ports:
+          - name: p2p
+            type: ClusterIP
+            port: 26656
+            protocol: TCP
+          - name: rpc
+            type: ClusterIP
+            port: 26657
+            protocol: TCP
+          - name: api
+            type: ClusterIP
+            port: 1317
+            protocol: TCP
+        resources:
+          limits:
+            # cpu: 8
+            memory: 14Gi
+          requests:
+            cpu: 1
+            memory: 9Gi
+
+        startupProbe:
+          tcpSocket:
+            port: 26657
+          periodSeconds: 60
+          failureThreshold: 120
+        livenessProbe:
+          tcpSocket:
+            port: 26657
+global:
+  fullnameOverride: ddddddddd
+  serviceAccount:
+    name: appchain
+  securityContext:
+    fsGroup: 1001
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroupChangePolicy: "Always"
+
+# # Additional manifests to deploy as an array
+# additionalManifests:
