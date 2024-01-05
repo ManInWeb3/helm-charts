@@ -53,6 +53,7 @@ spec:
       {{- end }}
     spec:
       setHostnameAsFQDN: true
+      subdomain: {{ $sts.name }}
       terminationGracePeriodSeconds: {{ default 30 $.Values.global.terminationGracePeriodSeconds }}
       {{- with $sts.affinity }}
       affinity: {{- toYaml . | nindent 8 }}
