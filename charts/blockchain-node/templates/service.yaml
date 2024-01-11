@@ -1,16 +1,16 @@
-{{- range $kstfs, $sts := .Values.statefulset }}
+{{- range $stsname, $sts := .Values.statefulset }}
 {{- range $kcntnr, $cntnr := $sts.containers }}
 {{- range $kprt, $prt := $cntnr.ports }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $sts.name }}-{{ $prt.name }}
+  name: {{ $stsname }}-{{ $prt.name }}
   labels:
     {{- include "blockchain-node.labels" $ | nindent 4 }}
 spec:
   selector:
-    statefulsetname: {{ $sts.name }}
+    statefulsetname: {{ $stsname }}
   type: {{ $prt.type }}
   ports:
     - port: {{ $prt.port }}
@@ -23,12 +23,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $sts.name }}
+  name: {{ $stsname }}
   labels:
     {{- include "blockchain-node.labels" $ | nindent 4 }}
 spec:
   selector:
-    statefulsetname: {{ $sts.name }}
+    statefulsetname: {{ $stsname }}
   clusterIP: None
   ports:
     - port: 12345
