@@ -1,0 +1,185 @@
+global:
+  fullnameOverride: index-provider
+  # podAnnotations:
+  #   index-provider-staging-tag: dev-latest
+  securityContext:
+    fsGroup: 0
+    fsGroupChangePolicy: Always
+    runAsGroup: 0
+    runAsUser: 0
+  serviceAccount:
+    create: true
+    name: node
+statefulset:
+  - containers:
+      - command:
+          - /app/upshot-node
+          - '--role=head'
+          - '--peer-db=$(APP_HOME)/peer-database'
+          - '--function-db=$(APP_HOME)/function-database'
+          - '--workspace=/tmp/node'
+          - '--private-key=$(APP_HOME)/keys/priv.bin'
+          - '--log-level=debug'
+          - '--port=9010'
+          - '--rest-api=:6000'
+        env:
+          - name: APP_HOME
+            value: /data
+        image:
+          repository: >-
+            696230526504.dkr.ecr.us-east-1.amazonaws.com/index-provider-staging
+          tag: c088be034e6c4530b969c6b9637595ab5f44f544
+        livenessProbe:
+          tcpSocket:
+            port: 6000
+        name: head
+        ports:
+          - name: api
+            port: 6000
+            protocol: TCP
+            type: ClusterIP
+          - name: p2p
+            port: 9010
+            protocol: TCP
+            type: ClusterIP
+        resources:
+          limits:
+            cpu: 1
+            memory: 1Gi
+          requests:
+            cpu: 256m
+            memory: 512Mi
+        startupProbe:
+          failureThreshold: 6
+          periodSeconds: 10
+          tcpSocket:
+            port: 6000
+        workingDir: /data
+    initContainers:
+      - command:
+          - /bin/sh
+          - '-c'
+          - |
+            KEYS_PATH="${APP_HOME}/keys"
+
+            if [ -d "$KEYS_PATH" ]; then
+              echo "Keys exist"
+            else
+              echo "Generating New Node Identity"
+              mkdir -p ${APP_HOME}/keys
+              cd $KEYS_PATH
+              /app/upshot-keys
+            fi
+        env:
+          - name: APP_HOME
+            value: /data
+        image: >-
+          696230526504.dkr.ecr.us-east-1.amazonaws.com/index-provider-staging:c088be034e6c4530b969c6b9637595ab5f44f544
+        name: init-keys
+        securityContext:
+          runAsUser: 1001
+        volumeMounts:
+          - mountPath: /data
+            name: heads-data
+        workingDir: /data
+    name: heads
+    persistence:
+      size: 1Gi
+      storageClassName: gp2
+      volumeMountPath: /data
+    replicas: 1
+  - containers:
+      - command:
+          - /app/upshot-node
+          - '--role=worker'
+          - '--peer-db=$(APP_HOME)/peer-database'
+          - '--function-db=$(APP_HOME)/function-database'
+          - '--runtime-path=/app/runtime'
+          - '--runtime-cli=bls-runtime'
+          - '--workspace=/tmp/node'
+          - '--private-key=$(APP_HOME)/keys/priv.bin'
+          - '--log-level=debug'
+          - '--port=9010'
+          - >-
+            --boot-nodes="/dns4/heads-0.heads/tcp/9010/p2p/12D3KooW9y4DMebnd4KfUfaAkE78PkAo6sEuyYi6cLSLdtu1tc5a"
+        env:
+          - name: APP_HOME
+            value: /data
+          - name: UPSHOT_API_TOKEN
+            valueFrom:
+              secretKeyRef:
+                key: UPSHOT_API_TOKEN
+                name: upshot-api-token
+        image:
+          repository: >-
+            696230526504.dkr.ecr.us-east-1.amazonaws.com/index-provider-staging
+          tag: c088be034e6c4530b969c6b9637595ab5f44f544
+        livenessProbe:
+          tcpSocket:
+            port: 9010
+        name: worker
+        ports:
+          - name: p2p
+            port: 9010
+            protocol: TCP
+            type: ClusterIP
+        resources:
+          limits:
+            cpu: 1
+            memory: 1Gi
+          requests:
+            cpu: 256m
+            memory: 512Mi
+        startupProbe:
+          failureThreshold: 6
+          periodSeconds: 10
+          tcpSocket:
+            port: 9010
+        workingDir: /data
+    initContainers:
+      - command:
+          - /bin/sh
+          - '-c'
+          - |
+            KEYS_PATH="${APP_HOME}/keys"
+
+            if [ -d "$KEYS_PATH" ]; then
+              echo "Keys exist"
+            else
+              echo "Generating New Node Identity"
+              mkdir -p ${APP_HOME}/keys
+              cd $KEYS_PATH
+              /app/upshot-keys
+            fi
+        env:
+          - name: APP_HOME
+            value: /data
+        image: >-
+          696230526504.dkr.ecr.us-east-1.amazonaws.com/index-provider-staging:c088be034e6c4530b969c6b9637595ab5f44f544
+        name: init-keys
+        securityContext:
+          runAsUser: 1001
+        volumeMounts:
+          - mountPath: /data
+            name: workers-data
+        workingDir: /data
+      - command:
+          - /bin/sh
+          - '-c'
+          - |
+            set -ex
+            apk add netcat-openbsd
+            while ! nc -z heads-0.heads 9010 </dev/null; do
+              echo "Waiting bootstrap node is up."
+              sleep 10;
+            done
+        image: 'alpine:latest'
+        name: wait-bootstrup-node
+        securityContext:
+          runAsUser: 0
+    name: workers
+    persistence:
+      size: 1Gi
+      storageClassName: gp2
+      volumeMountPath: /data
+    replicas: 1

@@ -1,5 +1,5 @@
-{{- range $stsname, $sts := $.Values.statefulset }}
-{{- $volumeName := printf "%s-data" $stsname }}
+{{- range $ksts, $sts := $.Values.statefulset }}
+{{- $volumeName := printf "%s-data" $sts.name }}
 
 #! TODO: Should be moved to the STS level (it copies files to the given path, and volumes are on STS level)
 #!       The same with secrets
@@ -21,14 +21,14 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ $stsname }}
+  name: {{ $sts.name }}
   labels:
     {{- include "blockchain-node.labels" $ | nindent 4 }}
     {{- with $sts.labels }}
       {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  serviceName: {{ $stsname }}
+  serviceName: {{ $sts.name }}
   podManagementPolicy: {{ default "Parallel" $.Values.global.podManagementPolicy }}
   updateStrategy:
     type: {{ default "RollingUpdate" $.Values.global.updateStrategy }}
@@ -37,7 +37,7 @@ spec:
     {{- end }}
   selector:
     matchLabels:
-      statefulsetname: {{ $stsname }}
+      statefulsetname: {{ $sts.name }}
   replicas: {{ default 1 $sts.replicas }}
   template:
     metadata:
@@ -47,8 +47,8 @@ spec:
         {{- with $sts.labels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        statefulsetname: {{ $stsname }}
-      {{- with $sts.podAnnotations }}
+        statefulsetname: {{ $sts.name }}
+      {{- with (merge (default (dict ) $sts.podAnnotations) (default (dict ) $.Values.global.podAnnotations))}}
       annotations: {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
@@ -214,4 +214,4 @@ spec:
           kind: VolumeSnapshot
           apiGroup: snapshot.storage.k8s.io
         {{- end }}
-{{ end }} # {{/* range $stsname, $sts := $.Values.statefulset */}}
+{{ end }} # {{/* range $ksts, $sts := $.Values.statefulset */}}

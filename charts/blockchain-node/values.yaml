@@ -2,6 +2,7 @@ statefulset: []
 
 global:
   # imagePullPolicy: IfNotPresent
+  podAnnotations: {}
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
