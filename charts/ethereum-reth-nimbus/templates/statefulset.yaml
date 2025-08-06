@@ -277,7 +277,6 @@ spec:
             httpGet:
               path: /ready
               port: 8080
-      {{- end }}
   volumeClaimTemplates:
     - apiVersion: v1
       kind: PersistentVolumeClaim

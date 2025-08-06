@@ -13,30 +13,27 @@ reth:
   image:
     repository: ghcr.io/paradigmxyz/reth
     tag: v1.6.0
-  resources:
-    requests:
-      cpu: 2
-      memory: 16Gi
-    limits:
-      # cpu: 500m
-      memory: 24Gi
+  resources: {}
+    # requests:
+    #   cpu: 2
+    #   memory: 16Gi
+    # limits:
+    #   # cpu: 500m
+    #   memory: 24Gi
 
 nimbus:
   image:
     repository: statusim/nimbus-eth2
     # -- Nimbus image tag
     tag: amd64-amd64-v25.7.1
-  resources:
+  resources: {}
     # -- Nimbus resource requests and limits
-    requests:
-      cpu: 1
-      memory: 8Gi
-    limits:
-      # cpu: 500m
-      memory: 12Gi
-
-readynessProbe:
-  enabled: true
+    # requests:
+    #   cpu: 1
+    #   memory: 8Gi
+    # limits:
+    #   # cpu: 500m
+    #   memory: 12Gi
 
 # -- Pod annotations
 podAnnotations: {}
