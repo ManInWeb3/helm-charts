@@ -1,0 +1,137 @@
+# -- Number of replicas
+replicas: 1
+
+ethereumChain: ""
+
+nodeSelector: {}
+
+persistence:
+  size: ""
+  storageClassName: lvm-localpv
+
+reth:
+  image:
+    repository: ghcr.io/paradigmxyz/reth
+    tag: v1.6.0
+  resources:
+    requests:
+      cpu: 2
+      memory: 16Gi
+    limits:
+      # cpu: 500m
+      memory: 24Gi
+
+nimbus:
+  image:
+    repository: statusim/nimbus-eth2
+    # -- Nimbus image tag
+    tag: amd64-amd64-v25.7.1
+  resources:
+    # -- Nimbus resource requests and limits
+    requests:
+      cpu: 1
+      memory: 8Gi
+    limits:
+      # cpu: 500m
+      memory: 12Gi
+
+readynessProbe:
+  enabled: true
+
+# -- Pod annotations
+podAnnotations: {}
+
+serviceAccount:
+  annotations: {}
+  name: node
+
+# -- Overrides the chart's computed fullname
+# fullnameOverride: node
+
+# -- The security context for pods
+# @default -- See `values.yaml`
+securityContext:
+  runAsGroup: 1001
+  # runAsNonRoot: true
+  runAsUser: 1001
+  fsGroupChangePolicy: "OnRootMismatch"
+
+# -- The security context for containers
+# @default -- See `values.yaml`
+containerSecurityContext:
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1001
+
+tolerations:
+  - effect: NoSchedule
+    key: lvm-localpv
+    operator: Equal
+    value: "true"
+
+pullPolicy: IfNotPresent
+# -- Pod management policy
+podManagementPolicy: Parallel
+
+rbac:
+  create: true
+  rules:
+    - apiGroups: ['*']
+      resources:
+        - services
+      verbs: ['*']
+    - apiGroups: ['*']
+      resources:
+        - pods
+      verbs: ['*']
+
+# -- How long to wait until the pod is forcefully terminated
+terminationGracePeriodSeconds: 90
+
+# -- Pod labels
+podLabels: {}
+
+# -- Image pull secrets for Docker images
+imagePullSecrets: []
+
+# -- Annotations for the StatefulSet
+annotations: {}
+
+# -- Overrides the chart's name
+nameOverride: ""
+
+# -- Pod priority class
+priorityClassName: null
+
+# -- Define the PodDisruptionBudget spec
+# If not set then a PodDisruptionBudget will not be created
+podDisruptionBudget: {}
+# minAvailable: 1
+# maxUnavailable: 1
+
+# -- Update strategy for the Statefulset
+updateStrategy:
+  # -- Update strategy type
+  type: RollingUpdate
+
+# -- Additional volumes
+extraVolumes: []
+
+# -- Additional volume mounts
+extraVolumeMounts: []
+
+# -- Additional ports. Useful when using extraContainers or extraContainerPorts
+extraPorts: []
+
+# -- Additional ports for the main container
+extraContainerPorts: []
+
+# -- Additional env variables
+extraEnv: []
+
+# -- Additional env variables injected via a created secret
+secretEnv: {}

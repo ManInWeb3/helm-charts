@@ -1,0 +1,7 @@
+apiVersion: v2
+name: ethereum-reth-nimbus
+description: Ethereum node with reth and  nimbus
+type: application
+version: 0.0.1
+maintainers:
+  - name: vlad

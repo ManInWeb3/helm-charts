@@ -1,0 +1,291 @@
+{{- $dataPath := "/data" }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "node.fullname" . }}
+  labels:
+    {{- include "node.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.annotations | nindent 4 }}
+spec:
+  podManagementPolicy: {{ .Values.podManagementPolicy }}
+  revisionHistoryLimit: 3
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "node.selectorLabels" . | nindent 6 }}
+  serviceName: {{ include "node.fullname" . }}
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "node.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "node.serviceAccountName" . }}
+    {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+    {{- end }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      affinity:
+        {{- with .Values.affinity }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      tolerations:
+        {{- with .Values.tolerations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      initContainers:
+        - name: init-dirs-external-ip
+          image: alpine/k8s:1.30.4
+          env:
+            - name: APP_HOME
+              value: {{$dataPath}}
+          command:
+            - /bin/sh
+            - -exuc
+            - |
+              kubectl annotate pod $HOSTNAME external-ip=$(curl -4 ifconfig.me) --overwrite;
+
+              #* Generate the JWT secret key
+              if [ ! -f $APP_HOME/jwt.txt ]; then
+                apk add openssl
+                openssl rand -hex 32 > $APP_HOME/jwt.txt
+              fi
+
+              if [[ ! -d $APP_HOME/reth || ! -d $APP_HOME/nimbus ]]; then
+                mkdir -p $APP_HOME/reth $APP_HOME/nimbus
+                chown -R {{ .Values.securityContext.runAsUser }}:{{ .Values.securityContext.runAsGroup }} $APP_HOME
+              fi
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: storage
+              mountPath: {{$dataPath}}
+
+        - name: nimbus-trusted-sync
+          image: {{.Values.nimbus.image.repository}}:{{.Values.nimbus.image.tag}}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          env:
+            - name: APP_HOME
+              value: {{$dataPath}}
+          command:
+            - sh
+            - -exuc
+            - |
+              id
+              if [ ! -d $APP_HOME/nimbus/db ]; then
+                #* if nimbus folder is empty state sync it manually 1st time
+                #* see https://nimbus.guide/trusted-node-sync.html
+                /home/user/nimbus_beacon_node \
+                trustedNodeSync \
+                  --network={{.Values.ethereumChain}} \
+                  --data-dir=$APP_HOME/nimbus \
+                  --trusted-node-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io \
+                  --reindex \
+                  --backfill
+              fi
+          volumeMounts:
+            - name: storage
+              mountPath: {{$dataPath}}
+
+      containers:
+        - name: reth
+          image: {{ .Values.reth.image.repository }}:{{ .Values.reth.image.tag }}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          env:
+            - name: EXTERNAL_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-ip']
+            - name: APP_HOME
+              value: "{{$dataPath}}"
+          command:
+            # - sleep
+            # - "10000000000000"
+            - reth
+            - node
+            - --chain={{.Values.ethereumChain}}
+            - --datadir=$(APP_HOME)/reth
+            - --http
+            - --http.addr=0.0.0.0
+            - --http.port=8545
+            - --http.api=admin,debug,eth,net,trace,txpool,web3,rpc,reth,ots
+            - --http.corsdomain=*
+            - --ws
+            - --ws.addr=0.0.0.0
+            - --ws.port=8546
+            - --ws.origins=*
+            - --ws.api=admin,debug,eth,net,trace,txpool,web3,rpc,reth,ots
+            - --authrpc.jwtsecret=$(APP_HOME)/jwt.txt
+            - --authrpc.addr=0.0.0.0
+            - --authrpc.port=8551
+            - --port=30303
+            - --discovery.port=30304
+            - --metrics=0.0.0.0:7300
+            - --log.file.max-files=0
+            - --nat=extip:$(EXTERNAL_IP)
+            - --p2p-secret-key=$(APP_HOME)/reth_p2p_key_$(EXTERNAL_IP)
+          ports:
+            - containerPort: 8545
+              name: eth1-rpc
+              protocol: TCP
+            - containerPort: 8546
+              name: eth1-ws
+              protocol: TCP
+            - containerPort: 30303
+              name: eth1-p2p
+              protocol: TCP
+            - containerPort: 30304
+              name: eth1-discovery
+              protocol: UDP
+            - containerPort: 7300
+              name: eth1-metrics
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: 8545
+          startupProbe:
+            tcpSocket:
+              port: 8545
+            periodSeconds: 30
+            failureThreshold: 20
+          resources:
+            {{- toYaml .Values.reth.resources | nindent 12 }}
+          lifecycle:
+            preStop:  #* To let it reply to all requests in process
+              exec:
+                command: ["/bin/sh", "-c", "sleep 60"]
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.extraVolumeMounts }}
+              {{ toYaml .Values.extraVolumeMounts | nindent 12}}
+            {{- end }}
+            - name: storage
+              mountPath: {{$dataPath}}
+        - name: nimbus
+          image: {{.Values.nimbus.image.repository}}:{{.Values.nimbus.image.tag}}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          env:
+            - name: EXTERNAL_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-ip']
+            - name: APP_HOME
+              value: "{{$dataPath}}"
+          command:
+            # - sleep
+            # - "10000000000000"
+            - /home/user/nimbus_beacon_node
+            - --network={{.Values.ethereumChain}}
+            - --data-dir=$(APP_HOME)/nimbus
+            - --el=http://localhost:8551
+            - --jwt-secret=$(APP_HOME)/jwt.txt
+            - --history=archive
+            - --nat=extip:$(EXTERNAL_IP)
+            - --tcp-port=9222
+            - --udp-port=9223
+            - --rest
+            - --rest-port=9545
+            - --rest-address=0.0.0.0
+            - --rest-allow-origin=*
+            - --metrics
+            - --metrics-address=0.0.0.0
+            - --metrics-port=7301
+          ports:
+            - containerPort: 9545
+              name: eth2-rpc
+              protocol: TCP
+            - containerPort: 9222
+              name: eth2-p2p
+              protocol: TCP
+            - containerPort: 9223
+              name: eth2-discovery
+              protocol: UDP
+            - containerPort: 7301
+              name: eth2-metrics
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: 9545
+          resources:
+            {{- toYaml .Values.nimbus.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.extraVolumeMounts }}
+              {{ toYaml .Values.extraVolumeMounts | nindent 12}}
+            {{- end }}
+            - name: storage
+              mountPath: {{$dataPath}}
+
+        - name: readiness-probe
+          image: alpine:latest
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            - name: VENV_PATH
+              value: /data/readiness
+            - name: APP_DIR
+              value: /app
+            #* Configuring readiness-probe script
+            - name: PROTO
+              value: ethereum
+            # - name: MIN_PEERS
+            #   value: "5"                          #* default
+            # - name: BLOCK_MAX_AGE
+            #   value: "30"                         #* default
+            # - name: EXECUTION_RPC_URL
+            #   value: "http://localhost:8545"      #* default
+            # - name: CONSENSUS_RPC_URL
+            #   value: "http://localhost:9545"      #* default
+            # - name: DEBUG_LEVEL
+            #   value: "1"                          #* default
+          command:
+            - sleep
+            - infinity
+            # - /bin/sh
+            # - -cexu
+            # - |
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 1
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          readinessProbe:
+            initialDelaySeconds: 60
+            httpGet:
+              path: /ready
+              port: 8080
+      {{- end }}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+        storageClassName: {{ .Values.persistence.storageClassName }}
