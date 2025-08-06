@@ -166,4 +166,16 @@ entries:
     urls:
     - https://github.com/ManInWeb3/helm-charts/releases/download/blockchain-node-0.1.0/blockchain-node-0.1.0.tgz
     version: 0.1.0
-generated: "2024-01-16T06:55:30.838659239Z"
+  ethereum-reth-nimbus:
+  - apiVersion: v2
+    created: "2025-08-06T07:20:55.477519391Z"
+    description: Ethereum node with reth and  nimbus
+    digest: dc85416fc7a886d13dfb741d93342820d32fdda0e1cd361e32d95693762690fe
+    maintainers:
+    - name: vlad
+    name: ethereum-reth-nimbus
+    type: application
+    urls:
+    - https://github.com/ManInWeb3/helm-charts/releases/download/ethereum-reth-nimbus-0.0.1/ethereum-reth-nimbus-0.0.1.tgz
+    version: 0.0.1
+generated: "2025-08-06T07:20:55.477557334Z"
