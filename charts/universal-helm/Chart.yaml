@@ -1,10 +1,6 @@
 apiVersion: v2
-name: blockchain-node
+name: universal-helm
 description: A Helm chart for Kubernetes
-
-keywords:
-  - blockchain
-  - web3
 
 maintainers:
   - email: vlad
@@ -12,4 +8,4 @@ maintainers:
 
 type: application
 
-version: 0.3.7
+version: 0.4.1
