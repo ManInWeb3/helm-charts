@@ -92,9 +92,7 @@ spec:
                 trustedNodeSync \
                   --network={{.Values.ethereumChain}} \
                   --data-dir=$APP_HOME/nimbus \
-                  --trusted-node-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io \
-                  --reindex \
-                  --backfill
+                  --trusted-node-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io
               fi
           volumeMounts:
             - name: storage
@@ -116,6 +114,7 @@ spec:
             # - "10000000000000"
             - reth
             - node
+            - --full
             - --chain={{.Values.ethereumChain}}
             - --datadir=$(APP_HOME)/reth
             - --http
@@ -193,7 +192,6 @@ spec:
             - --data-dir=$(APP_HOME)/nimbus
             - --el=http://localhost:8551
             - --jwt-secret=$(APP_HOME)/jwt.txt
-            - --history=archive
             - --nat=extip:$(EXTERNAL_IP)
             - --tcp-port=9222
             - --udp-port=9223
