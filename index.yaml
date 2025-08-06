@@ -178,4 +178,17 @@ entries:
     urls:
     - https://github.com/ManInWeb3/helm-charts/releases/download/ethereum-reth-nimbus-0.0.1/ethereum-reth-nimbus-0.0.1.tgz
     version: 0.0.1
-generated: "2025-08-06T07:20:55.477557334Z"
+  universal-helm:
+  - apiVersion: v2
+    created: "2025-08-06T07:42:31.662844249Z"
+    description: A Helm chart for Kubernetes
+    digest: ed73950934fef012d14809fbb145d360eb3ff9b01ec1b38992a9c152ffeaef21
+    maintainers:
+    - email: vlad
+      name: vlad
+    name: universal-helm
+    type: application
+    urls:
+    - https://github.com/ManInWeb3/helm-charts/releases/download/universal-helm-0.4.1/universal-helm-0.4.1.tgz
+    version: 0.4.1
+generated: "2025-08-06T07:42:31.662872412Z"
