@@ -194,7 +194,7 @@ spec:
             - --data-dir=$(APP_HOME)/nimbus
             - --el=http://localhost:8551
             - --jwt-secret=$(APP_HOME)/jwt.txt
-            - --nat=extip:$(EXTERNAL_IP)
+            - --nat:extip:$(EXTERNAL_IP)
             - --tcp-port=9222
             - --udp-port=9223
             - --rest
