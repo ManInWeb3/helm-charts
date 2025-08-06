@@ -135,7 +135,9 @@ spec:
             - --log.file.max-files=0
             - --nat=extip:$(EXTERNAL_IP)
             - --p2p-secret-key=$(APP_HOME)/reth_p2p_key_$(EXTERNAL_IP)
-            {{- toYaml .Values.reth.aditionalArgs | nindent 12 }}
+            {{- with .Values.reth.aditionalArgs}}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
           ports:
             - containerPort: 8545
@@ -203,7 +205,9 @@ spec:
             - --metrics
             - --metrics-address=0.0.0.0
             - --metrics-port=7301
-            {{- toYaml .Values.nimbus.aditionalArgs | nindent 12 }}
+            {{- with .Values.nimbus.aditionalArgs}}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
           ports:
             - containerPort: 9545
