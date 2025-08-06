@@ -114,7 +114,6 @@ spec:
             # - "10000000000000"
             - reth
             - node
-            - --full
             - --chain={{.Values.ethereumChain}}
             - --datadir=$(APP_HOME)/reth
             - --http
@@ -136,6 +135,8 @@ spec:
             - --log.file.max-files=0
             - --nat=extip:$(EXTERNAL_IP)
             - --p2p-secret-key=$(APP_HOME)/reth_p2p_key_$(EXTERNAL_IP)
+            {{- toYaml .Values.reth.aditionalArgs | nindent 12 }}
+
           ports:
             - containerPort: 8545
               name: eth1-rpc
@@ -202,6 +203,8 @@ spec:
             - --metrics
             - --metrics-address=0.0.0.0
             - --metrics-port=7301
+            {{- toYaml .Values.nimbus.aditionalArgs | nindent 12 }}
+
           ports:
             - containerPort: 9545
               name: eth2-rpc
