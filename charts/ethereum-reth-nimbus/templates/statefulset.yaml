@@ -134,7 +134,6 @@ spec:
             - --metrics=0.0.0.0:7300
             - --log.file.max-files=0
             - --nat=extip:$(EXTERNAL_IP)
-            - --p2p-secret-key=$(APP_HOME)/reth_p2p_key_$(EXTERNAL_IP)
             {{- with .Values.reth.aditionalArgs}}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -287,6 +286,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: storage
+        {{- with .Values.persistence.pvcLabels}}
+        labels:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:

@@ -8,6 +8,8 @@ nodeSelector: {}
 persistence:
   size: ""
   storageClassName: lvm-localpv
+  pvcLabels: {}
+    # label1: values1
 
 reth:
   image:
