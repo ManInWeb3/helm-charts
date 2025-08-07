@@ -1,7 +1,7 @@
 apiVersion: v2
-name: ethereum-reth-nimbus
-description: Ethereum node with reth and  nimbus
+name: ethereum-reth-lighthouse
+description: Ethereum node with reth and lighthouse
 type: application
-version: 0.0.19
+version: 0.0.20
 maintainers:
   - name: vlad
