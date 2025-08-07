@@ -168,6 +168,17 @@ entries:
     version: 0.1.0
   ethereum-reth-nimbus:
   - apiVersion: v2
+    created: "2025-08-07T00:07:34.375778494Z"
+    description: Ethereum node with reth and  nimbus
+    digest: c7a0d1f38dc3f17c57322a0154ba03632b018181eabc3ad323877f54b27ca51d
+    maintainers:
+    - name: vlad
+    name: ethereum-reth-nimbus
+    type: application
+    urls:
+    - https://github.com/ManInWeb3/helm-charts/releases/download/ethereum-reth-nimbus-0.0.8/ethereum-reth-nimbus-0.0.8.tgz
+    version: 0.0.8
+  - apiVersion: v2
     created: "2025-08-06T13:35:10.123149033Z"
     description: Ethereum node with reth and  nimbus
     digest: 9196afdbf8c4bb4b7067dc599d2d9021fb17ece732e3f659aab43d63786945b4
@@ -257,4 +268,4 @@ entries:
     urls:
     - https://github.com/ManInWeb3/helm-charts/releases/download/universal-helm-0.4.1/universal-helm-0.4.1.tgz
     version: 0.4.1
-generated: "2025-08-06T13:35:10.123204911Z"
+generated: "2025-08-07T00:07:34.375842117Z"
