@@ -235,6 +235,7 @@ spec:
             - name: storage
               mountPath: {{$dataPath}}
 
+      {{- if .Values.readynessProbe.enabled }}
         - name: readiness-probe
           image: alpine:latest
           imagePullPolicy: {{ .Values.pullPolicy }}
@@ -245,19 +246,7 @@ spec:
               value: /data/readiness
             - name: APP_DIR
               value: /app
-            #* Configuring readiness-probe script
-            - name: PROTO
-              value: ethereum
-            # - name: MIN_PEERS
-            #   value: "5"                          #* default
-            # - name: BLOCK_MAX_AGE
-            #   value: "30"                         #* default
-            # - name: EXECUTION_RPC_URL
-            #   value: "http://localhost:8545"      #* default
-            # - name: CONSENSUS_RPC_URL
-            #   value: "http://localhost:9545"      #* default
-            # - name: DEBUG_LEVEL
-            #   value: "1"                          #* default
+
           command:
             - sleep
             - infinity
@@ -265,10 +254,6 @@ spec:
             # - -cexu
             # - |
 
-          ports:
-            - name: http
-              containerPort: 8080
-              protocol: TCP
           resources:
             limits:
               cpu: 1
@@ -276,11 +261,12 @@ spec:
             requests:
               cpu: 10m
               memory: 64Mi
-          readinessProbe:
-            initialDelaySeconds: 60
-            httpGet:
-              path: /ready
-              port: 8080
+          # readinessProbe:
+          #   initialDelaySeconds: 60
+          #   httpGet:
+          #     path: /ready
+          #     port: 8080
+      {{- end }}
   volumeClaimTemplates:
     - apiVersion: v1
       kind: PersistentVolumeClaim

@@ -45,6 +45,9 @@ podAnnotations: {}
 
 additionalManifests: []
 
+readynessProbe:
+  enabled: false
+
 serviceAccount:
   annotations: {}
   name: node
