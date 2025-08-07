@@ -315,11 +315,7 @@ spec:
             requests:
               cpu: 10m
               memory: 64Mi
-          # readinessProbe:
-          #   initialDelaySeconds: 60
-          #   httpGet:
-          #     path: /ready
-          #     port: 8080
+
       {{- end }}
   volumeClaimTemplates:
     - apiVersion: v1
