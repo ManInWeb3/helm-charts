@@ -74,30 +74,30 @@ spec:
             - name: storage
               mountPath: {{$dataPath}}
 
-        - name: trusted-sync
-          image: {{.Values.lighthouse.image.repository}}:{{.Values.lighthouse.image.tag}}
-          imagePullPolicy: {{ .Values.pullPolicy }}
-          env:
-            - name: APP_HOME
-              value: {{$dataPath}}
-          command:
-            - sh
-            - -exuc
-            - |
-              id
-              if [ ! -d $APP_HOME/lighthouse/beacon ]; then
-                #* if folder is empty state sync it manually 1st time
-                /usr/local/bin/lighthouse \
-                  beacon_node \
-                  --network={{.Values.ethereumChain}} \
-                  --datadir=$(APP_HOME)/lighthouse \
-                  --execution-endpoint=http://127.0.0.1:8551 \
-                  --execution-jwt=$(APP_HOME)/jwt.txt \
-                  --checkpoint-sync-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io
-              fi
-          volumeMounts:
-            - name: storage
-              mountPath: {{$dataPath}}
+        # - name: trusted-sync
+        #   image: {{.Values.lighthouse.image.repository}}:{{.Values.lighthouse.image.tag}}
+        #   imagePullPolicy: {{ .Values.pullPolicy }}
+        #   env:
+        #     - name: APP_HOME
+        #       value: {{$dataPath}}
+        #   command:
+        #     - sh
+        #     - -exuc
+        #     - |
+        #       id
+        #       if [ ! -d $APP_HOME/lighthouse/beacon ]; then
+        #         #* if folder is empty state sync it manually 1st time
+        #         /usr/local/bin/lighthouse \
+        #           beacon_node \
+        #           --network={{.Values.ethereumChain}} \
+        #           --datadir=$(APP_HOME)/lighthouse \
+        #           --execution-endpoint=http://127.0.0.1:8551 \
+        #           --execution-jwt=$(APP_HOME)/jwt.txt \
+        #           --checkpoint-sync-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io
+        #       fi
+        #   volumeMounts:
+        #     - name: storage
+        #       mountPath: {{$dataPath}}
 
       containers:
         - name: reth
