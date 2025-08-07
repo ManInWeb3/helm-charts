@@ -167,6 +167,7 @@ spec:
             # - sleep
             # - "10000000000000"
             - /usr/local/bin/lighthouse
+            - beacon_node
             - --network={{.Values.ethereumChain}}
             - --datadir=$(APP_HOME)/lighthouse
             - --execution-endpoint=http://127.0.0.1:8551
