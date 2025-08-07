@@ -91,6 +91,8 @@ spec:
                   beacon_node \
                   --network={{.Values.ethereumChain}} \
                   --datadir=$(APP_HOME)/lighthouse \
+                  --execution-endpoint=http://127.0.0.1:8551 \
+                  --execution-jwt=$(APP_HOME)/jwt.txt \
                   --checkpoint-sync-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io
               fi
           volumeMounts:
