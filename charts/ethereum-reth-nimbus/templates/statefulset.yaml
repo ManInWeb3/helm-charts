@@ -74,6 +74,29 @@ spec:
             - name: storage
               mountPath: {{$dataPath}}
 
+        - name: trusted-sync
+          image: {{.Values.lighthouse.image.repository}}:{{.Values.lighthouse.image.tag}}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          env:
+            - name: APP_HOME
+              value: {{$dataPath}}
+          command:
+            - sh
+            - -exuc
+            - |
+              id
+              if [ ! -d $APP_HOME/lighthouse/beacon ]; then
+                #* if folder is empty state sync it manually 1st time
+                /usr/local/bin/lighthouse \
+                  beacon_node \
+                  --network={{.Values.ethereumChain}} \
+                  --datadir=$(APP_HOME)/lighthouse \
+                  --checkpoint-sync-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io
+              fi
+          volumeMounts:
+            - name: storage
+              mountPath: {{$dataPath}}
+
       containers:
         - name: reth
           image: {{ .Values.reth.image.repository }}:{{ .Values.reth.image.tag }}
@@ -172,16 +195,17 @@ spec:
             - --datadir=$(APP_HOME)/lighthouse
             - --execution-endpoint=http://127.0.0.1:8551
             - --execution-jwt=$(APP_HOME)/jwt.txt
-            - --checkpoint-sync-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io
             - --listen-address=0.0.0.0
             - --port=9222
             - --discovery-port=9223
             - --enr-address=$(EXTERNAL_IP)
             - --enr-tcp-port=30401
             - --enr-udp-port=30402
+            - --http
             - --http-port=9545
             - --http-address=0.0.0.0
             - --http-allow-origin=*
+            - --metrics
             - --metrics-address=0.0.0.0
             - --metrics-allow-origin=*
             - --metrics-port=7301
