@@ -26,15 +26,15 @@ reth:
     - --full    #* Run prunned node by default
 
 lighthouse:
-  enabled: false
+  # enabled: true
   image:
     repository: sigp/lighthouse
     tag: v7.1.0-amd64
 
   #* External ports will be calculated as $Pod_Ordinal + $startExternalPort___
   startExternalPortTcp: 30400
-  startExternalPortUdp: 30400
-  startExternalPortQuic: 30500
+  startExternalPortUdp: 30500
+  startExternalPortQuic: 30600
 
   resources: {}
     # -- Nimbus resource requests and limits
@@ -118,7 +118,7 @@ rbac:
       verbs: ['*']
 
 # -- How long to wait until the pod is forcefully terminated
-terminationGracePeriodSeconds: 90
+terminationGracePeriodSeconds: 30
 
 # -- Pod labels
 podLabels: {}

@@ -68,7 +68,7 @@ spec:
               #* Generate the JWT secret key
               if [ ! -f $APP_HOME/jwt.txt ]; then
                 apk add openssl
-                openssl rand -hex 32 > $APP_HOME/jwt.txt
+                openssl rand -hex 32 | tr -d "\n" > $APP_HOME/jwt.txt
               fi
 
               if [[ ! -d $APP_HOME/reth || ! -d $APP_HOME/lighthouse ]]; then
@@ -77,32 +77,6 @@ spec:
               fi
           securityContext:
             runAsUser: 0
-          volumeMounts:
-            - name: storage
-              mountPath: {{$dataPath}}
-
-        - name: nimbus-trusted-sync
-          image: {{.Values.nimbus.image.repository}}:{{.Values.nimbus.image.tag}}
-          imagePullPolicy: {{ .Values.pullPolicy }}
-          env:
-            - name: APP_HOME
-              value: {{$dataPath}}
-          command:
-            - sh
-            - -exuc
-            - |
-              id
-              if [ ! -d $APP_HOME/nimbus/db ]; then
-                #* if nimbus folder is empty state sync it manually 1st time
-                #* see https://nimbus.guide/trusted-node-sync.html
-                /home/user/nimbus_beacon_node \
-                trustedNodeSync \
-                  --network={{.Values.ethereumChain}} \
-                  --data-dir=$APP_HOME/nimbus \
-                  --trusted-node-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io \
-                  --reindex \
-                  --backfill
-              fi
           volumeMounts:
             - name: storage
               mountPath: {{$dataPath}}
@@ -173,10 +147,6 @@ spec:
             failureThreshold: 20
           resources:
             {{- toYaml .Values.reth.resources | nindent 12 }}
-          lifecycle:
-            preStop:  #* To let it reply to all requests in process
-              exec:
-                command: ["/bin/sh", "-c", "sleep 60"]
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           volumeMounts:
@@ -186,78 +156,6 @@ spec:
             - name: storage
               mountPath: {{$dataPath}}
 
-        - name: nimbus
-          image: {{.Values.nimbus.image.repository}}:{{.Values.nimbus.image.tag}}
-          imagePullPolicy: {{ .Values.pullPolicy }}
-          env:
-            - name: EXTERNAL_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['external-ip']
-            - name: EXTERNAL_PORT_TCP
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['external-port-tcp']
-            - name: EXTERNAL_PORT_UDP
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['external-port-udp']
-            - name: EXTERNAL_PORT_QUICK
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['external-port-quic']
-            - name: APP_HOME
-              value: "{{$dataPath}}"
-          command:
-            # - sleep
-            # - "10000000000000"
-            - /home/user/nimbus_beacon_node
-            - --network={{.Values.ethereumChain}}
-            - --data-dir=$(APP_HOME)/nimbus
-            - --el=http://127.0.0.1:8551
-            - --jwt-secret=$(APP_HOME)/jwt.txt
-            - --history=archive
-            - --nat=extip:$(EXTERNAL_IP)
-            - --tcp-port=9222
-            - --udp-port=9223
-            - --rest
-            - --rest-port=9545
-            - --rest-address=0.0.0.0
-            - --rest-allow-origin=*
-            - --metrics
-            - --metrics-address=0.0.0.0
-            - --metrics-port=7301
-            {{- with .Values.nimbus.aditionalArgs}}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          ports:
-            - containerPort: 9545
-              name: eth2-rpc
-              protocol: TCP
-            - containerPort: 9222
-              name: eth2-p2p
-              protocol: TCP
-            - containerPort: 9223
-              name: eth2-discovery
-              protocol: UDP
-            - containerPort: 7301
-              name: eth2-metrics
-              protocol: TCP
-          livenessProbe:
-            tcpSocket:
-              port: 9545
-          resources:
-            {{- toYaml .Values.nimbus.resources | nindent 12 }}
-          securityContext:
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-          volumeMounts:
-            {{- if .Values.extraVolumeMounts }}
-              {{ toYaml .Values.extraVolumeMounts | nindent 12}}
-            {{- end }}
-            - name: storage
-              mountPath: {{$dataPath}}
-
-      {{- if .Values.lighthouse.enabled }}
         - name: lighthouse
           image: {{.Values.lighthouse.image.repository}}:{{.Values.lighthouse.image.tag}}
           imagePullPolicy: {{ .Values.pullPolicy }}
@@ -328,6 +226,12 @@ spec:
           livenessProbe:
             tcpSocket:
               port: 9545
+          startupProbe:
+            tcpSocket:
+              port: 9545
+            failureThreshold: 20
+            periodSeconds: 30
+
           resources:
             {{- toYaml .Values.lighthouse.resources | nindent 12 }}
           securityContext:
@@ -338,26 +242,71 @@ spec:
             {{- end }}
             - name: storage
               mountPath: {{$dataPath}}
-      {{- end }}
 
       {{- if .Values.readynessProbe.enabled }}
         - name: readiness-probe
           image: alpine:latest
           imagePullPolicy: {{ .Values.pullPolicy }}
           securityContext:
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-          env:
-            - name: VENV_PATH
-              value: /data/readiness
-            - name: APP_DIR
-              value: /app
-
+            runAsUser: 0
+            runAsNonRoot: false
           command:
-            - sleep
-            - infinity
-            # - /bin/sh
-            # - -cexu
-            # - |
+            - /bin/sh
+            - -ceu
+            - |
+              #* Install requirements for the readyness probe
+              apk add jq curl
+
+              MAX_ETH1_LATEST_BLOCK_AGE=15  # Set your acceptable age threshold in seconds
+
+              #* This loop to show status in the log
+              while true; do
+                ETH2_SYNC_STATUS=$(curl -s "http://127.0.0.1:9545/lighthouse/ui/health" | jq -r .data.sync_state)
+                ETH2_CONNECTED_PEERS=$(curl -s "http://127.0.0.1:9545/lighthouse/ui/health" | jq -r .data.connected_peers)
+
+                ETH1_TIMESTAMP_HEX=$(curl -sH "Content-Type: application/json" -X POST \
+                  --data '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest", false],"id":67}' \
+                  127.0.0.1:8545 | jq -r .result.timestamp)
+
+                ETH1_LATEST_BLOCK_AGE=$(($(date +%s) - $ETH1_TIMESTAMP_HEX))
+
+                echo "ETH2_SYNC_STATUS: $ETH2_SYNC_STATUS"
+                echo "ETH2_CONNECTED_PEERS: $ETH2_CONNECTED_PEERS"
+                echo "ETH1_LATEST_BLOCK_AGE: $ETH1_LATEST_BLOCK_AGE seconds"
+
+                sleep 30
+              done
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  MAX_ETH1_LATEST_BLOCK_AGE=15  # seconds
+
+                  ETH2_SYNC_STATUS=$(curl -s "http://127.0.0.1:9545/lighthouse/ui/health" | jq -r .data.sync_state)
+
+                  ETH1_TIMESTAMP_HEX=$(curl -sH "Content-Type: application/json" -X POST \
+                    --data '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest", false],"id":67}' \
+                    127.0.0.1:8545 | jq -r .result.timestamp)
+
+                  # Check for null/empty timestamp
+                  if [[ -z "$ETH1_TIMESTAMP_HEX" || "$ETH1_TIMESTAMP_HEX" == "null" ]]; then
+                    echo "Failed to retrieve ETH1 timestamp"
+                    exit 1
+                  fi
+
+                  ETH1_LATEST_BLOCK_AGE=$(($(date +%s) - $ETH1_TIMESTAMP_HEX))
+
+                  if [[ "$ETH2_SYNC_STATUS" == "Synced" && "$ETH1_LATEST_BLOCK_AGE" -lt "$MAX_ETH1_LATEST_BLOCK_AGE" ]]; then
+                    exit 0
+                  else
+                    exit 1
+                  fi
+
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
 
           resources:
             limits:
