@@ -26,6 +26,7 @@ reth:
     - --full    #* Run prunned node by default
 
 lighthouse:
+  enabled: false
   image:
     repository: sigp/lighthouse
     tag: v7.1.0-amd64
@@ -45,21 +46,20 @@ lighthouse:
     #   memory: 12Gi
   aditionalArgs: []
 
-
-# nimbus:
-#   image:
-#     repository: statusim/nimbus-eth2
-#     # -- Nimbus image tag
-#     tag: amd64-v25.7.1
-#   resources: {}
-#     # -- Nimbus resource requests and limits
-#     # requests:
-#     #   cpu: 1
-#     #   memory: 8Gi
-#     # limits:
-#     #   # cpu: 500m
-#     #   memory: 12Gi
-#   aditionalArgs: []
+nimbus:
+  image:
+    repository: statusim/nimbus-eth2
+    # -- Nimbus image tag
+    tag: amd64-v25.7.1
+  resources: {}
+    # -- Nimbus resource requests and limits
+    # requests:
+    #   cpu: 1
+    #   memory: 8Gi
+    # limits:
+    #   # cpu: 500m
+    #   memory: 12Gi
+  aditionalArgs: []
 
 # -- Pod annotations
 podAnnotations: {}

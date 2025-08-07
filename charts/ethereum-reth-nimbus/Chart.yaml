@@ -2,6 +2,6 @@ apiVersion: v2
 name: ethereum-reth-nimbus
 description: Ethereum node with reth and  nimbus
 type: application
-version: 0.0.16
+version: 0.0.17
 maintainers:
   - name: vlad

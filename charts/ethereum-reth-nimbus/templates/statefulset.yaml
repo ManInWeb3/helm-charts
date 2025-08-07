@@ -81,6 +81,32 @@ spec:
             - name: storage
               mountPath: {{$dataPath}}
 
+        - name: nimbus-trusted-sync
+          image: {{.Values.nimbus.image.repository}}:{{.Values.nimbus.image.tag}}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          env:
+            - name: APP_HOME
+              value: {{$dataPath}}
+          command:
+            - sh
+            - -exuc
+            - |
+              id
+              if [ ! -d $APP_HOME/nimbus/db ]; then
+                #* if nimbus folder is empty state sync it manually 1st time
+                #* see https://nimbus.guide/trusted-node-sync.html
+                /home/user/nimbus_beacon_node \
+                trustedNodeSync \
+                  --network={{.Values.ethereumChain}} \
+                  --data-dir=$APP_HOME/nimbus \
+                  --trusted-node-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io \
+                  --reindex \
+                  --backfill
+              fi
+          volumeMounts:
+            - name: storage
+              mountPath: {{$dataPath}}
+
       containers:
         - name: reth
           image: {{ .Values.reth.image.repository }}:{{ .Values.reth.image.tag }}
@@ -160,6 +186,78 @@ spec:
             - name: storage
               mountPath: {{$dataPath}}
 
+        - name: nimbus
+          image: {{.Values.nimbus.image.repository}}:{{.Values.nimbus.image.tag}}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          env:
+            - name: EXTERNAL_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-ip']
+            - name: EXTERNAL_PORT_TCP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-port-tcp']
+            - name: EXTERNAL_PORT_UDP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-port-udp']
+            - name: EXTERNAL_PORT_QUICK
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-port-quic']
+            - name: APP_HOME
+              value: "{{$dataPath}}"
+          command:
+            # - sleep
+            # - "10000000000000"
+            - /home/user/nimbus_beacon_node
+            - --network={{.Values.ethereumChain}}
+            - --data-dir=$(APP_HOME)/nimbus
+            - --el=http://localhost:8551
+            - --jwt-secret=$(APP_HOME)/jwt.txt
+            - --history=archive
+            - --nat=extip:$(EXTERNAL_IP)
+            - --tcp-port=9222
+            - --udp-port=9223
+            - --rest
+            - --rest-port=9545
+            - --rest-address=0.0.0.0
+            - --rest-allow-origin=*
+            - --metrics
+            - --metrics-address=0.0.0.0
+            - --metrics-port=7301
+            {{- with .Values.nimbus.aditionalArgs}}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - containerPort: 9545
+              name: eth2-rpc
+              protocol: TCP
+            - containerPort: 9222
+              name: eth2-p2p
+              protocol: TCP
+            - containerPort: 9223
+              name: eth2-discovery
+              protocol: UDP
+            - containerPort: 7301
+              name: eth2-metrics
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: 9545
+          resources:
+            {{- toYaml .Values.nimbus.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.extraVolumeMounts }}
+              {{ toYaml .Values.extraVolumeMounts | nindent 12}}
+            {{- end }}
+            - name: storage
+              mountPath: {{$dataPath}}
+
+      {{- if .Values.lighthouse.enabled }}
         - name: lighthouse
           image: {{.Values.lighthouse.image.repository}}:{{.Values.lighthouse.image.tag}}
           imagePullPolicy: {{ .Values.pullPolicy }}
@@ -240,6 +338,7 @@ spec:
             {{- end }}
             - name: storage
               mountPath: {{$dataPath}}
+      {{- end }}
 
       {{- if .Values.readynessProbe.enabled }}
         - name: readiness-probe
