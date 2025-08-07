@@ -56,6 +56,13 @@ spec:
             - /bin/sh
             - -exuc
             - |
+              #* Calculate and annotate external Ports
+              ORDINAL=$(echo $HOSTNAME|grep -Eo '[0-9]+$')
+              kubectl annotate pod $HOSTNAME external-port-tcp=$(($ORDINAL+{{.Values.lighthouse.startExternalPortTcp}})) --overwrite;
+              kubectl annotate pod $HOSTNAME external-port-udp=$(($ORDINAL+{{.Values.lighthouse.startExternalPortUdp}})) --overwrite;
+              kubectl annotate pod $HOSTNAME external-port-quic=$(($ORDINAL+{{.Values.lighthouse.startExternalPortQuic}})) --overwrite;
+
+              #* Annotate external IP
               kubectl annotate pod $HOSTNAME external-ip=$(curl -4 ifconfig.me) --overwrite;
 
               #* Generate the JWT secret key
@@ -73,31 +80,6 @@ spec:
           volumeMounts:
             - name: storage
               mountPath: {{$dataPath}}
-
-        # - name: trusted-sync
-        #   image: {{.Values.lighthouse.image.repository}}:{{.Values.lighthouse.image.tag}}
-        #   imagePullPolicy: {{ .Values.pullPolicy }}
-        #   env:
-        #     - name: APP_HOME
-        #       value: {{$dataPath}}
-        #   command:
-        #     - sh
-        #     - -exuc
-        #     - |
-        #       id
-        #       if [ ! -d $APP_HOME/lighthouse/beacon ]; then
-        #         #* if folder is empty state sync it manually 1st time
-        #         /usr/local/bin/lighthouse \
-        #           beacon_node \
-        #           --network={{.Values.ethereumChain}} \
-        #           --datadir=$(APP_HOME)/lighthouse \
-        #           --execution-endpoint=http://127.0.0.1:8551 \
-        #           --execution-jwt=$(APP_HOME)/jwt.txt \
-        #           --checkpoint-sync-url=https://beaconstate-{{.Values.ethereumChain}}.chainsafe.io
-        #       fi
-        #   volumeMounts:
-        #     - name: storage
-        #       mountPath: {{$dataPath}}
 
       containers:
         - name: reth
@@ -186,6 +168,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.annotations['external-ip']
+            - name: EXTERNAL_PORT_TCP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-port-tcp']
+            - name: EXTERNAL_PORT_UDP
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-port-udp']
+            - name: EXTERNAL_PORT_QUICK
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['external-port-quic']
             - name: APP_HOME
               value: "{{$dataPath}}"
           command:
@@ -200,9 +194,11 @@ spec:
             - --listen-address=0.0.0.0
             - --port=9222
             - --discovery-port=9223
+            - --quic-port=9224
             - --enr-address=$(EXTERNAL_IP)
-            - --enr-tcp-port=30401
-            - --enr-udp-port=30402
+            - --enr-tcp-port=$(EXTERNAL_PORT_TCP)
+            - --enr-udp-port=$(EXTERNAL_PORT_UDP)
+            - --enr-quic-port=$(EXTERNAL_PORT_QUICK)
             - --http
             - --http-port=9545
             - --http-address=0.0.0.0
@@ -224,6 +220,9 @@ spec:
               protocol: TCP
             - containerPort: 9223
               name: eth2-discovery
+              protocol: UDP
+            - containerPort: 9224
+              name: eth2-quic
               protocol: UDP
             - containerPort: 7301
               name: eth2-metrics

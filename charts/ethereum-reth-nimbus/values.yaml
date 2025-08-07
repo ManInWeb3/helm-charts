@@ -25,11 +25,16 @@ reth:
   aditionalArgs:
     - --full    #* Run prunned node by default
 
-
 lighthouse:
   image:
     repository: sigp/lighthouse
     tag: v7.1.0-amd64
+
+  #* External ports will be calculated as $Pod_Ordinal + $startExternalPort___
+  startExternalPortTcp: 30400
+  startExternalPortUdp: 30400
+  startExternalPortQuic: 30500
+
   resources: {}
     # -- Nimbus resource requests and limits
     # requests:
