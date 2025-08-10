@@ -6,9 +6,9 @@ metadata:
     {{- include "node.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
+  publishNotReadyAddresses: {{ .Values.publishNotReadyRPC | default false }}
   selector:
     {{- include "node.selectorLabels" . | nindent 4 }}
-  publishNotReadyAddresses: true
   ports:
     - name: eth1-rpc
       port: 8545

@@ -6,6 +6,7 @@ metadata:
     {{- include "node.labels" . | nindent 4 }}
 spec:
   clusterIP: None
+  publishNotReadyAddresses: true
   selector:
     {{- include "node.selectorLabels" . | nindent 4 }}
   ports:

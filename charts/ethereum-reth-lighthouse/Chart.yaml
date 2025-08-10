@@ -2,6 +2,6 @@ apiVersion: v2
 name: ethereum-reth-lighthouse
 description: Ethereum node with reth and lighthouse
 type: application
-version: 0.0.20
+version: 0.0.22
 maintainers:
   - name: vlad
