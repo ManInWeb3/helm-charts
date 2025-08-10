@@ -29,6 +29,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+    {{- if .Values.hostNetwork | default false}}
+      hostNetwork: true
+    {{- end }}
       serviceAccountName: {{ include "node.serviceAccountName" . }}
     {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
@@ -52,18 +55,22 @@ spec:
           env:
             - name: APP_HOME
               value: {{$dataPath}}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           command:
             - /bin/sh
             - -exuc
             - |
               #* Calculate and annotate external Ports
-              ORDINAL=$(echo $HOSTNAME|grep -Eo '[0-9]+$')
-              kubectl annotate pod $HOSTNAME external-port-tcp=$(($ORDINAL+{{.Values.lighthouse.startExternalPortTcp}})) --overwrite;
-              kubectl annotate pod $HOSTNAME external-port-udp=$(($ORDINAL+{{.Values.lighthouse.startExternalPortUdp}})) --overwrite;
-              kubectl annotate pod $HOSTNAME external-port-quic=$(($ORDINAL+{{.Values.lighthouse.startExternalPortQuic}})) --overwrite;
+              ORDINAL=$(echo $POD_NAME|grep -Eo '[0-9]+$')
+              kubectl annotate pod $POD_NAME external-port-tcp=$(($ORDINAL+{{.Values.lighthouse.startExternalPortTcp}})) --overwrite;
+              kubectl annotate pod $POD_NAME external-port-udp=$(($ORDINAL+{{.Values.lighthouse.startExternalPortUdp}})) --overwrite;
+              kubectl annotate pod $POD_NAME external-port-quic=$(($ORDINAL+{{.Values.lighthouse.startExternalPortQuic}})) --overwrite;
 
               #* Annotate external IP
-              kubectl annotate pod $HOSTNAME external-ip=$(curl -4 ifconfig.me) --overwrite;
+              kubectl annotate pod $POD_NAME external-ip=$(curl -4 ifconfig.me) --overwrite;
 
               #* Generate the JWT secret key
               if [ ! -f $APP_HOME/jwt.txt ]; then
@@ -212,12 +219,21 @@ spec:
               name: eth2-rpc
               protocol: TCP
             - containerPort: 9222
+              {{- if .Values.p2pUseHostPorts | default false}}
+              hostPort: 9222
+              {{- end }}
               name: eth2-p2p
               protocol: TCP
             - containerPort: 9223
+              {{- if .Values.p2pUseHostPorts | default false}}
+              hostPort: 9223
+              {{- end }}
               name: eth2-discovery
               protocol: UDP
             - containerPort: 9224
+              {{- if .Values.p2pUseHostPorts | default false}}
+              hostPort: 9224
+              {{- end }}
               name: eth2-quic
               protocol: UDP
             - containerPort: 7301

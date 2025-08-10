@@ -90,6 +90,9 @@ pullPolicy: IfNotPresent
 # -- Pod management policy
 podManagementPolicy: Parallel
 
+hostNetwork: false
+p2pUseHostPorts: false
+
 rbac:
   create: true
   rules:
