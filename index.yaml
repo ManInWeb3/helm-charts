@@ -168,6 +168,17 @@ entries:
     version: 0.1.0
   ethereum-reth-lighthouse:
   - apiVersion: v2
+    created: "2025-08-10T04:21:06.259149856Z"
+    description: Ethereum node with reth and lighthouse
+    digest: 70ebe2833a33a29b6c4c96c9f019d6cb8cf65848e0eca920a97099ed435e507a
+    maintainers:
+    - name: vlad
+    name: ethereum-reth-lighthouse
+    type: application
+    urls:
+    - https://github.com/ManInWeb3/helm-charts/releases/download/ethereum-reth-lighthouse-0.0.24/ethereum-reth-lighthouse-0.0.24.tgz
+    version: 0.0.24
+  - apiVersion: v2
     created: "2025-08-10T02:12:29.142210665Z"
     description: Ethereum node with reth and lighthouse
     digest: 590f9a2b48795cb710129cee2afa0d65c7fc191d58f7288d199b222fd76f36d2
@@ -412,4 +423,4 @@ entries:
     urls:
     - https://github.com/ManInWeb3/helm-charts/releases/download/universal-helm-0.4.1/universal-helm-0.4.1.tgz
     version: 0.4.1
-generated: "2025-08-10T02:12:29.142303179Z"
+generated: "2025-08-10T04:21:06.259294977Z"
